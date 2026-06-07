@@ -1,0 +1,478 @@
+export const GREECON_COMPANY = "Greecon Sh.p.k";
+export const GREECON_DOMAIN = "greecon.earth";
+export const GREECON_PUBLIC_EMAILS = ["info@greecon.earth", "eridon.manuka@greecon.earth"] as const;
+
+export const DEMO_TENANT_ID = "11111111-1111-4111-8111-111111111111";
+
+export const siteTypes = [
+  "farm",
+  "greenhouse",
+  "water_facility",
+  "energy_site",
+  "integrated_site",
+  "demo_site"
+] as const;
+export type SiteType = (typeof siteTypes)[number];
+
+export const assetTypes = [
+  "WaterSystem",
+  "SolarSystem",
+  "BatterySystem",
+  "FarmZone",
+  "Greenhouse",
+  "TreatmentUnit",
+  "PumpStation",
+  "IrrigationZone",
+  "WeatherStation",
+  "Gateway"
+] as const;
+export type AssetType = (typeof assetTypes)[number];
+
+export const qualityFlags = ["OK", "WARN", "BAD"] as const;
+export type QualityFlag = (typeof qualityFlags)[number];
+
+export const statusLabels = [
+  "OK",
+  "Watch",
+  "Warning",
+  "Critical",
+  "Offline",
+  "Simulated",
+  "Manual Override"
+] as const;
+export type StatusLabel = (typeof statusLabels)[number];
+
+export const severityLevels = ["info", "watch", "warning", "critical"] as const;
+export type SeverityLevel = (typeof severityLevels)[number];
+
+export const incidentStatuses = ["open", "acknowledged", "investigating", "resolved", "closed"] as const;
+export type IncidentStatus = (typeof incidentStatuses)[number];
+
+export const userRoles = ["owner", "admin", "operator", "viewer", "auditor"] as const;
+export type UserRole = (typeof userRoles)[number];
+
+export type Permission =
+  | "tenant:read"
+  | "tenant:manage"
+  | "site:read"
+  | "site:manage"
+  | "asset:read"
+  | "asset:manage"
+  | "device:read"
+  | "device:manage"
+  | "point:read"
+  | "telemetry:ingest"
+  | "automation:read"
+  | "automation:manage"
+  | "command:create"
+  | "command:approve"
+  | "alert:read"
+  | "alert:acknowledge"
+  | "incident:manage"
+  | "maintenance:manage"
+  | "report:export"
+  | "audit:read"
+  | "user:manage"
+  | "settings:manage";
+
+export const rolePermissions: Record<UserRole, readonly Permission[]> = {
+  owner: [
+    "tenant:read",
+    "tenant:manage",
+    "site:read",
+    "site:manage",
+    "asset:read",
+    "asset:manage",
+    "device:read",
+    "device:manage",
+    "point:read",
+    "telemetry:ingest",
+    "automation:read",
+    "automation:manage",
+    "command:create",
+    "command:approve",
+    "alert:read",
+    "alert:acknowledge",
+    "incident:manage",
+    "maintenance:manage",
+    "report:export",
+    "audit:read",
+    "user:manage",
+    "settings:manage"
+  ],
+  admin: [
+    "tenant:read",
+    "site:read",
+    "site:manage",
+    "asset:read",
+    "asset:manage",
+    "device:read",
+    "device:manage",
+    "point:read",
+    "telemetry:ingest",
+    "automation:read",
+    "automation:manage",
+    "command:create",
+    "alert:read",
+    "alert:acknowledge",
+    "incident:manage",
+    "maintenance:manage",
+    "report:export",
+    "audit:read",
+    "user:manage",
+    "settings:manage"
+  ],
+  operator: [
+    "tenant:read",
+    "site:read",
+    "asset:read",
+    "device:read",
+    "point:read",
+    "telemetry:ingest",
+    "automation:read",
+    "command:create",
+    "alert:read",
+    "alert:acknowledge",
+    "incident:manage",
+    "maintenance:manage"
+  ],
+  viewer: ["tenant:read", "site:read", "asset:read", "device:read", "point:read", "automation:read", "alert:read"],
+  auditor: ["tenant:read", "site:read", "asset:read", "device:read", "point:read", "automation:read", "alert:read", "audit:read", "report:export"]
+};
+
+export function hasPermission(role: UserRole, permission: Permission): boolean {
+  return rolePermissions[role].includes(permission);
+}
+
+export const canonicalPoints = [
+  "water.tank.level.percent",
+  "water.flow.lpm",
+  "water.pressure.bar",
+  "water.pump.status",
+  "water.pump.command",
+  "energy.solar.power.kw",
+  "energy.consumption.kw",
+  "energy.battery.soc.percent",
+  "energy.battery.power.kw",
+  "energy.grid.import.kw",
+  "energy.grid.export.kw",
+  "agri.soil.moisture.percent",
+  "agri.air.temperature.c",
+  "agri.humidity.percent",
+  "agri.irrigation.command",
+  "system.gateway.online"
+] as const;
+export type CanonicalPointName = (typeof canonicalPoints)[number];
+
+export const stateKeys = [
+  "water.tank.critical",
+  "water.tank.low",
+  "water.pump.dry_run_risk",
+  "energy.surplus_available",
+  "energy.battery.constrained",
+  "agri.irrigation_required",
+  "system.communication_degraded",
+  "system.sensor_quality_bad"
+] as const;
+export type StateKey = (typeof stateKeys)[number];
+
+export interface Tenant {
+  id: string;
+  name: string;
+  domain: string;
+  status: "active" | "suspended";
+}
+
+export interface User {
+  id: string;
+  tenantId: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  status: "active" | "disabled";
+}
+
+export interface Site {
+  id: string;
+  tenantId: string;
+  name: string;
+  type: SiteType;
+  locationName: string;
+  latitude?: number;
+  longitude?: number;
+  status: StatusLabel;
+  edgeStatus: StatusLabel;
+}
+
+export interface Asset {
+  id: string;
+  tenantId: string;
+  siteId: string;
+  name: string;
+  type: AssetType;
+  status: StatusLabel;
+}
+
+export interface Device {
+  id: string;
+  tenantId: string;
+  siteId: string;
+  assetId?: string;
+  gatewayId?: string;
+  name: string;
+  deviceType: string;
+  protocol: "modbus" | "opc_ua" | "vendor_api" | "analog" | "simulated";
+  driverType: string;
+  health: StatusLabel;
+  lastSeenUtc?: string;
+  firmwareVersion?: string;
+  secureIdentityStatus: "placeholder" | "provisioned" | "revoked";
+}
+
+export interface Point {
+  id: string;
+  tenantId: string;
+  siteId: string;
+  assetId?: string;
+  deviceId: string;
+  canonicalName: CanonicalPointName;
+  label: string;
+  unit: string;
+  quality: QualityFlag;
+  capability: "read" | "write" | "read_write";
+  thresholdConfig?: Record<string, number>;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface TelemetryReading {
+  timestampUtc: string;
+  tenantId: string;
+  siteId: string;
+  assetId?: string;
+  deviceId: string;
+  pointId: string;
+  canonicalName: CanonicalPointName;
+  value: number | boolean | string;
+  unit: string;
+  quality: QualityFlag;
+  source: "edge" | "cloud" | "simulator" | "manual";
+  ingestionTimestampUtc: string;
+}
+
+export interface DerivedState {
+  id: string;
+  tenantId: string;
+  siteId: string;
+  assetId?: string;
+  stateKey: StateKey;
+  stateValue: boolean | number | string;
+  severity: SeverityLevel;
+  confidence: number;
+  reason: string;
+  sourceTelemetryRefs?: string[];
+  createdAtUtc: string;
+  updatedAtUtc: string;
+}
+
+export const rulePriorityLevels = [
+  "safety",
+  "asset_protection",
+  "compliance",
+  "optimization",
+  "efficiency",
+  "advisory"
+] as const;
+export type RulePriorityLevel = (typeof rulePriorityLevels)[number];
+
+export const ruleExecutionModes = ["edge", "cloud_assisted", "advisory", "simulation"] as const;
+export type RuleExecutionMode = (typeof ruleExecutionModes)[number];
+
+export interface RuleCondition {
+  point?: CanonicalPointName;
+  stateKey?: StateKey;
+  operator: "lt" | "lte" | "gt" | "gte" | "eq" | "neq";
+  value: number | boolean | string;
+}
+
+export interface RuleAction {
+  type: "command" | "alert" | "recommendation";
+  targetCanonicalName?: CanonicalPointName;
+  value?: number | boolean | string;
+  message: string;
+}
+
+export interface AutomationRule {
+  id: string;
+  tenantId: string;
+  siteId?: string;
+  name: string;
+  priority: RulePriorityLevel;
+  triggerType: "threshold" | "schedule" | "trend" | "multi_variable" | "forecast" | "constraint" | "failsafe";
+  conditions: RuleCondition[];
+  constraints: RuleCondition[];
+  actions: RuleAction[];
+  executionMode: RuleExecutionMode;
+  explanationTemplate: string;
+  rollbackBehavior: string;
+  enabled: boolean;
+  approvalState: "draft" | "approved" | "disabled";
+  version: number;
+  createdBy: string;
+  updatedBy: string;
+}
+
+export interface CommandTarget {
+  deviceId: string;
+  pointId: string;
+  canonicalName: CanonicalPointName;
+}
+
+export interface CommandMessage {
+  messageType: "command";
+  commandId: string;
+  tenantId: string;
+  siteId: string;
+  target: CommandTarget;
+  requestedValue: number | boolean | string;
+  requestedBy: string;
+  requestedByRole: UserRole;
+  reason: string;
+  manualOverride?: {
+    durationMinutes: number;
+    expiresAtUtc: string;
+  };
+  issuedAtUtc: string;
+  correlationId: string;
+}
+
+export interface CommandAckMessage {
+  messageType: "command_ack";
+  commandId: string;
+  tenantId: string;
+  siteId: string;
+  deviceId: string;
+  status: "accepted" | "rejected" | "executed" | "failed";
+  acknowledgementUtc: string;
+  result?: string;
+  failureReason?: string;
+  correlationId: string;
+}
+
+export interface TelemetryMessage {
+  messageType: "telemetry";
+  tenantId: string;
+  siteId: string;
+  deviceId: string;
+  readings: TelemetryReading[];
+  publishedAtUtc: string;
+  correlationId: string;
+}
+
+export interface DeviceHealthMessage {
+  messageType: "device_health";
+  tenantId: string;
+  siteId: string;
+  gatewayId: string;
+  status: StatusLabel;
+  lastSeenUtc: string;
+  softwareVersion?: string;
+  bufferedReadings: number;
+  clockDriftMs: number;
+  correlationId: string;
+}
+
+export interface EdgeSyncMessage {
+  messageType: "edge_sync";
+  tenantId: string;
+  siteId: string;
+  gatewayId: string;
+  batchId: string;
+  startedAtUtc: string;
+  completedAtUtc?: string;
+  bufferedReadings: number;
+  status: "started" | "completed" | "failed";
+  correlationId: string;
+}
+
+export interface AlertMessage {
+  messageType: "alert";
+  alertId: string;
+  tenantId: string;
+  siteId: string;
+  assetId?: string;
+  category:
+    | "equipment_failure"
+    | "sensor_quality_degradation"
+    | "resource_threshold"
+    | "water_tank_critical"
+    | "pump_dry_run_risk"
+    | "overpressure"
+    | "battery_constrained"
+    | "communication_degraded"
+    | "site_offline"
+    | "rule_conflict"
+    | "manual_override_active";
+  severity: SeverityLevel;
+  title: string;
+  suggestedAction: string;
+  createdAtUtc: string;
+  correlationId: string;
+}
+
+export function mqttTelemetryTopic(tenantId: string, siteId: string, deviceId: string): string {
+  return `greecon/${tenantId}/${siteId}/telemetry/${deviceId}`;
+}
+
+export function mqttHealthTopic(tenantId: string, siteId: string, gatewayId: string): string {
+  return `greecon/${tenantId}/${siteId}/health/${gatewayId}`;
+}
+
+export function mqttCommandTopic(tenantId: string, siteId: string, deviceId: string): string {
+  return `greecon/${tenantId}/${siteId}/commands/${deviceId}`;
+}
+
+export function mqttCommandAckTopic(tenantId: string, siteId: string, deviceId: string): string {
+  return `greecon/${tenantId}/${siteId}/commands/${deviceId}/ack`;
+}
+
+export function mqttEdgeSyncTopic(tenantId: string, siteId: string, gatewayId: string): string {
+  return `greecon/${tenantId}/${siteId}/edge/${gatewayId}/sync`;
+}
+
+export function mqttAlertTopic(tenantId: string, siteId: string): string {
+  return `greecon/${tenantId}/${siteId}/alerts`;
+}
+
+export function isQualityFlag(value: unknown): value is QualityFlag {
+  return typeof value === "string" && qualityFlags.includes(value as QualityFlag);
+}
+
+export function isCanonicalPointName(value: unknown): value is CanonicalPointName {
+  return typeof value === "string" && canonicalPoints.includes(value as CanonicalPointName);
+}
+
+export function validateTelemetryMessage(message: TelemetryMessage): string[] {
+  const errors: string[] = [];
+  if (message.messageType !== "telemetry") errors.push("messageType must be telemetry");
+  if (!message.tenantId) errors.push("tenantId is required");
+  if (!message.siteId) errors.push("siteId is required");
+  if (!message.deviceId) errors.push("deviceId is required");
+  if (!Array.isArray(message.readings) || message.readings.length === 0) errors.push("readings are required");
+
+  for (const [index, reading] of message.readings.entries()) {
+    if (!reading.timestampUtc || Number.isNaN(Date.parse(reading.timestampUtc))) {
+      errors.push(`readings[${index}].timestampUtc must be an ISO UTC timestamp`);
+    }
+    if (reading.timestampUtc && !reading.timestampUtc.endsWith("Z")) {
+      errors.push(`readings[${index}].timestampUtc must be normalized to UTC`);
+    }
+    if (!isCanonicalPointName(reading.canonicalName)) {
+      errors.push(`readings[${index}].canonicalName is not canonical`);
+    }
+    if (!isQualityFlag(reading.quality)) {
+      errors.push(`readings[${index}].quality must be OK, WARN, or BAD`);
+    }
+  }
+
+  return errors;
+}
