@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: greecon
+      POSTGRES_USER: greecon_local
+      POSTGRES_PASSWORD: greecon_local_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - greecon-postgres-data:/var/lib/postgresql/data
+      - ./apps/api/src/database/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greecon_local -d greecon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infra/docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - greecon-mosquitto-data:/mosquitto/data
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      API_PORT: "4000"
+      DATABASE_URL: postgres://greecon_local:greecon_local_password@postgres:5432/greecon
+      GREECON_DEFAULT_TENANT_ID: "11111111-1111-4111-8111-111111111111"
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      GREECON_API_URL: http://api:4000
+    ports:
+      - "3000:3000"
+
+  edge-simulator:
+    build:
+      context: .
+      dockerfile: infra/docker/edge-simulator.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      TENANT_ID: "11111111-1111-4111-8111-111111111111"
+      SITE_ID: "22222222-2222-4222-8222-222222222201"
+      GATEWAY_ID: "77777777-7777-4777-8777-777777777701"
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: greecon_local_admin
+    volumes:
+      - ./infra/docker/grafana/provisioning:/etc/grafana/provisioning
+      - greecon-grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+
+volumes:
+  greecon-postgres-data:
+  greecon-mosquitto-data:
+  greecon-grafana-data:

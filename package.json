@@ -1,32 +1,24 @@
 {
-  "name": "@greecon/api",
+  "name": "greecon-platform",
   "version": "0.1.0",
   "private": true,
-  "main": "dist/main.js",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/main.js",
-    "start:dev": "tsx src/main.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@greecon/gaia-core": "0.1.0",
-    "@greecon/shared": "0.1.0",
-    "@nestjs/common": "^11.1.19",
-    "@nestjs/config": "^4.0.4",
-    "@nestjs/core": "^11.1.19",
-    "@nestjs/platform-express": "^11.1.19",
-    "@nestjs/swagger": "^11.4.2",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
-    "helmet": "^7.1.0",
-    "pg": "^8.13.1",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "build:packages": "npm run build -w @greecon/shared && npm run build -w @greecon/gaia-core && npm run build -w @greecon/config",
+    "build:api": "npm run build -w @greecon/api",
+    "build:web": "npm run build -w @greecon/web",
+    "build:edge": "npm run build -w @greecon/edge-simulator",
+    "build": "npm run build:packages && npm run build:api && npm run build:web && npm run build:edge",
+    "dev:api": "npm run start:dev -w @greecon/api",
+    "dev:web": "npm run dev -w @greecon/web",
+    "dev:edge": "npm run start:dev -w @greecon/edge-simulator",
+    "typecheck": "npm run build:packages && npm run typecheck --workspaces --if-present",
+    "test": "npm run build:packages && npm run test --workspaces --if-present"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.10",
-    "vitest": "^4.1.5"
+    "typescript": "^5.7.3"
   }
 }
