@@ -1,0 +1,63 @@
+# Publishes a static demo snapshot to GitHub Pages — real seeded data baked
+# into static HTML at build time, no live backend or database involved once
+# published. See docs/12-deployment-github-pages.md.
+name: Publish demo to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install
+
+      - run: npm run build:packages && npm run build:api
+
+      - name: Start the API on seeded demo data
+        run: |
+          node apps/api/dist/main.js &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4000/health && exit 0
+            sleep 1
+          done
+          echo "API did not become healthy in time" >&2
+          exit 1
+
+      - name: Build a static export of the web app
+        env:
+          NEXT_OUTPUT_EXPORT: "1"
+          NEXT_BASE_PATH: /${{ github.event.repository.name }}
+          GREECON_API_URL: http://localhost:4000
+        run: npm run build -w @greecon/web
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -3,12 +3,17 @@ const API_BASE_URL = process.env.GREECON_API_URL ?? "http://localhost:4000";
 export type DemoRole = "owner" | "admin" | "operator" | "viewer" | "auditor";
 
 export async function apiGet<T>(path: string, role: DemoRole = "operator"): Promise<T> {
+  // A static export (NEXT_OUTPUT_EXPORT=1, see docs/12-deployment-github-pages.md) has no
+  // server to re-fetch on each request — every page bakes in whatever the API returns at
+  // build time, so `no-store` (which Next.js's static export forbids outright) doesn't apply.
+  const isStaticExport = process.env.NEXT_OUTPUT_EXPORT === "1";
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "x-user-role": role,
       ...(await authHeader())
     },
-    cache: "no-store"
+    ...(isStaticExport ? {} : { cache: "no-store" as const })
   });
 
   if (!response.ok) {

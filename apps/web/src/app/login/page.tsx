@@ -2,7 +2,7 @@ export default function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-panel" aria-label="Secure access">
-        <img src="/greecon-logo-placeholder.svg" alt="Greecon" />
+        <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo-placeholder.svg`} alt="Greecon" />
         <div>
           <p className="eyebrow">Secure platform access</p>
           <h1>Greecon Platform</h1>

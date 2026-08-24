@@ -21,7 +21,7 @@ export function Shell({ children, title, subtitle }: { children: ReactNode; titl
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
         <Link href="/" className="brand">
-          <img src="/greecon-logo-placeholder.svg" alt="Greecon" />
+          <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo-placeholder.svg`} alt="Greecon" />
         </Link>
         <nav className="main-nav">
           {navItems.map((item) => (
