@@ -4,11 +4,12 @@
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && cp -r src/database/migrations dist/database/migrations",
     "start": "node dist/main.js",
     "start:dev": "ts-node src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "node dist/database/migrate.js"
   },
   "dependencies": {
     "@greecon/gaia-core": "0.1.0",
