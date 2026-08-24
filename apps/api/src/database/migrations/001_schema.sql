@@ -1,5 +1,15 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS timescaledb;
+
+-- TimescaleDB accelerates telemetry_readings locally (see infra/docker) but is not
+-- available on managed Postgres such as Cloud SQL. Enable it opportunistically and
+-- skip hypertable conversion below when it isn't installed.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'timescaledb') THEN
+    CREATE EXTENSION IF NOT EXISTS timescaledb;
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS tenants (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -126,7 +136,13 @@ CREATE TABLE IF NOT EXISTS telemetry_readings (
   PRIMARY KEY (id, timestamp_utc)
 );
 
-SELECT create_hypertable('telemetry_readings', 'timestamp_utc', if_not_exists => TRUE);
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'timescaledb') THEN
+    PERFORM create_hypertable('telemetry_readings', 'timestamp_utc', if_not_exists => TRUE);
+  END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS derived_states (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

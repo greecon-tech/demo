@@ -14,6 +14,16 @@ interface SiteDetail {
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
 }
 
+export async function generateStaticParams() {
+  // Only the static-export build (docs/12-deployment-github-pages.md) needs every route
+  // pre-rendered up front — a normal SSR build (Railway, GCP) renders these on request and
+  // has no live API to query yet at build time, so skip the fetch entirely there.
+  if (process.env.NEXT_OUTPUT_EXPORT !== "1") return [];
+
+  const sites = await apiGet<Array<{ id: string }>>("/sites");
+  return sites.map((site) => ({ siteId: site.id }));
+}
+
 export default async function SiteDetailPage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params;
   const detail = await apiGet<SiteDetail>(`/sites/${siteId}`);

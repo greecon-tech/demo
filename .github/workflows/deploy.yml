@@ -1,0 +1,64 @@
+# Manual-only for now — the pilot is deploying via Railway instead (see
+# docs/10-deployment-gcp.md for when to switch this back to an automatic
+# push trigger). Flip the trigger back to `push: branches: [main]` once the
+# GCP_* repository variables this workflow needs are actually set; until
+# then an automatic trigger would just fail on every push to main.
+name: Deploy to Cloud Run
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: ${{ vars.GCP_REGION }}
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REPOSITORY: ${{ vars.GCP_ARTIFACT_REGISTRY }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build and push API image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/api:${{ github.sha }}"
+          docker build -f infra/docker/api.Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "API_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Build and push web image
+        run: |
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/web:${{ github.sha }}"
+          docker build -f infra/docker/web.Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "WEB_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy API to Cloud Run
+        run: |
+          gcloud run deploy greecon-api \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --image="${API_IMAGE}"
+
+      - name: Deploy web to Cloud Run
+        run: |
+          gcloud run deploy greecon-web \
+            --project="${PROJECT_ID}" \
+            --region="${REGION}" \
+            --image="${WEB_IMAGE}"
