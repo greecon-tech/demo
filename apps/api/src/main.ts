@@ -30,8 +30,17 @@ async function bootstrap(): Promise<void> {
     .build();
   SwaggerModule.setup("docs", app, SwaggerModule.createDocument(app, swaggerConfig));
 
-  const port = Number(process.env.API_PORT ?? 4000);
-  await app.listen(port);
+  // PORT is Railway's convention; API_PORT is ours (docker-compose, GCP). Railway's
+  // private networking requires listening on "::" (IPv6), which also accepts ordinary
+  // IPv4 connections on a dual-stack host — but not every host has IPv6 available at
+  // all, so fall back to the plain default (0.0.0.0) rather than assuming.
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? 4000);
+  try {
+    await app.listen(port, "::");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EAFNOSUPPORT") throw error;
+    await app.listen(port);
+  }
 }
 
 void bootstrap();

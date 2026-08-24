@@ -1,5 +1,7 @@
 # Deployment on Google Cloud
 
+The initial pilot is deployed on Railway instead (see `docs/11-deployment-railway.md`) — far less setup for a first pilot. This remains the target for real production infrastructure once the pilot outgrows Railway; `.github/workflows/deploy.yml` is wired for it already, just switched to manual-trigger-only until it's needed.
+
 Production infrastructure runs on Google Cloud:
 
 - Cloud Run for the API and web services.

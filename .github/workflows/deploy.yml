@@ -1,16 +1,11 @@
+# Manual-only for now — the pilot is deploying via Railway instead (see
+# docs/10-deployment-gcp.md for when to switch this back to an automatic
+# push trigger). Flip the trigger back to `push: branches: [main]` once the
+# GCP_* repository variables this workflow needs are actually set; until
+# then an automatic trigger would just fail on every push to main.
 name: Deploy to Cloud Run
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/api/**"
-      - "apps/web/**"
-      - "packages/**"
-      - "infra/docker/**"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/deploy.yml"
   workflow_dispatch: {}
 
 permissions:
