@@ -9,11 +9,15 @@ export interface Column<Row extends object> {
 export function DataTable<Row extends object>({
   columns,
   rows,
-  emptyLabel = "No records available"
+  emptyLabel = "No records available",
+  wide = true
 }: {
   columns: readonly Column<Row>[];
   rows: readonly Row[];
   emptyLabel?: string;
+  /** Force a horizontal-scroll floor for tables that need room for many columns.
+   * Set false in a narrow layout context (e.g. a sidebar panel) so the table stays fluid instead. */
+  wide?: boolean;
 }) {
   if (rows.length === 0) {
     return <div className="empty-state">{emptyLabel}</div>;
@@ -21,7 +25,7 @@ export function DataTable<Row extends object>({
 
   return (
     <div className="table-wrap">
-      <table>
+      <table className={wide ? "table-wide" : undefined}>
         <thead>
           <tr>
             {columns.map((column) => (

@@ -42,6 +42,7 @@ export default async function AutomationPage() {
       <div className="split">
         <Section title="Automation History">
           <DataTable
+            wide={false}
             rows={history}
             columns={[
               { key: "createdAtUtc", label: "Time" },

@@ -57,6 +57,17 @@ button:focus-visible {
   background: var(--near-black-green);
 }
 
+button.button-ghost {
+  background: transparent;
+  color: var(--deep-green-gray);
+}
+
+button.button-ghost:hover,
+button.button-ghost:focus-visible {
+  background: var(--pale-green-blue);
+  color: var(--near-black-green);
+}
+
 input,
 select {
   width: 100%;
@@ -89,11 +100,23 @@ label {
   padding: 24px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .brand img {
   display: block;
-  width: 180px;
-  max-width: 100%;
-  height: auto;
+  width: 28px;
+  height: 39px;
+  flex-shrink: 0;
+}
+
+.brand span {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--near-black-green);
 }
 
 .main-nav {
@@ -105,11 +128,20 @@ label {
   border-radius: 6px;
   color: var(--deep-green-gray);
   padding: 10px 12px;
+  border-left: 2px solid transparent;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
 .main-nav a:hover,
 .main-nav a:focus-visible {
   background: var(--pale-green-blue);
+}
+
+.main-nav a[aria-current="page"] {
+  background: var(--pale-green-blue);
+  border-left-color: var(--living-green);
+  color: var(--near-black-green);
+  font-weight: 500;
 }
 
 .sidebar-foot {
@@ -245,6 +277,7 @@ main {
 .status {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 28px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -252,6 +285,15 @@ main {
   font-size: 0.86rem;
   line-height: 1.2;
   white-space: nowrap;
+}
+
+.status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .status-ok {
@@ -319,6 +361,13 @@ main {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.site-row:hover,
+.site-row:focus-visible {
+  border-color: var(--living-green);
+  background: rgba(232, 224, 211, 0.4);
 }
 
 .table-wrap {
@@ -329,9 +378,12 @@ main {
 
 table {
   width: 100%;
-  min-width: 680px;
   border-collapse: collapse;
   background: rgba(232, 224, 211, 0.34);
+}
+
+table.table-wide {
+  min-width: 680px;
 }
 
 th,
@@ -349,6 +401,14 @@ th {
 
 tr:last-child td {
   border-bottom: 0;
+}
+
+tbody tr {
+  transition: background-color 0.12s ease;
+}
+
+tbody tr:hover {
+  background: rgba(216, 226, 220, 0.3);
 }
 
 .tabs {
@@ -419,8 +479,8 @@ tr:last-child td {
 }
 
 .login-panel img {
-  width: 190px;
-  height: auto;
+  width: 40px;
+  height: 56px;
 }
 
 .login-panel form {
