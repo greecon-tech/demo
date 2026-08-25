@@ -47,7 +47,7 @@ export function ManualOverridePanel() {
             <strong>Confirm manual override</strong>
             <p>Remote users cannot bypass hard safety rules. This action remains simulated in MVP.</p>
             <div className="dialog__actions">
-              <button type="button" onClick={() => setPending(false)}>
+              <button type="button" className="button-ghost" onClick={() => setPending(false)}>
                 Cancel
               </button>
               <button type="button" onClick={confirmOverride}>

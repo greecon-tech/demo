@@ -62,6 +62,7 @@ export default async function OverviewPage() {
         </Section>
         <Section title="Active Alerts">
           <DataTable
+            wide={false}
             rows={overview.activeAlerts.map((alert) => ({ ...alert, site: siteName.get(alert.siteId) ?? alert.siteId }))}
             columns={[
               { key: "severity", label: "Severity", render: (row) => <StatusBadge status={row.severity} /> },

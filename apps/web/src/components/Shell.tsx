@@ -1,35 +1,17 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 import { GREECON_COMPANY, GREECON_DOMAIN } from "@greecon/shared";
-
-const navItems = [
-  { href: "/", label: "Overview" },
-  { href: "/sites/22222222-2222-4222-8222-222222222201", label: "Sites" },
-  { href: "/monitoring", label: "Monitoring" },
-  { href: "/automation", label: "Automation" },
-  { href: "/alerts", label: "Alerts" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/devices", label: "Devices" },
-  { href: "/reports", label: "Reports" },
-  { href: "/audit", label: "Audit" },
-  { href: "/admin", label: "Admin" },
-  { href: "/settings", label: "Settings" }
-] as const;
+import { Nav } from "./Nav";
 
 export function Shell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle?: string }) {
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
         <Link href="/" className="brand">
-          <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="Greecon" />
+          <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="" width="28" height="39" />
+          <span>Greecon</span>
         </Link>
-        <nav className="main-nav">
-          {navItems.map((item) => (
-            <Link href={item.href} key={item.href}>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <Nav />
         <div className="sidebar-foot">
           <p>{GREECON_COMPANY}</p>
           <span>{GREECON_DOMAIN}</span>
