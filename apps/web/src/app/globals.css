@@ -1,24 +1,33 @@
 :root {
-  --bg: #ffffff;
-  --bg-sidebar: #fbfbfa;
-  --bg-hover: rgba(55, 53, 47, 0.06);
-  --bg-hover-strong: rgba(55, 53, 47, 0.09);
-  --text: #37352f;
-  --muted: rgba(55, 53, 47, 0.65);
-  --faint: rgba(55, 53, 47, 0.45);
-  --line: rgba(55, 53, 47, 0.1);
-  --accent: #448561;
-  --accent-strong: #2f3d35;
-  --accent-soft: rgba(68, 133, 97, 0.12);
-  --critical-fg: #ad4949;
-  --critical-bg: rgba(173, 73, 73, 0.1);
-  --warning-fg: #9c6b1f;
-  --warning-bg: rgba(203, 145, 47, 0.13);
-  --watch-fg: #4d6e8c;
-  --watch-bg: rgba(51, 126, 169, 0.11);
-  --ok-fg: #3a7859;
-  --ok-bg: rgba(68, 133, 97, 0.12);
-  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* Greecon brand palette (docs/06-frontend-design-system.md) */
+  --warm-background: #f7f1e9;
+  --surface: #e8e0d3;
+  --deep-green-gray: #2f3d35;
+  --pale-green-blue: #d8e2dc;
+  --living-green: #448561;
+  --near-black-green: #1a211d;
+
+  --bg: var(--warm-background);
+  --bg-sidebar: var(--surface);
+  --bg-card: rgba(232, 224, 211, 0.5);
+  --bg-hover: rgba(47, 61, 53, 0.08);
+  --bg-hover-strong: rgba(47, 61, 53, 0.13);
+  --text: var(--near-black-green);
+  --muted: rgba(26, 33, 29, 0.68);
+  --faint: rgba(26, 33, 29, 0.48);
+  --line: rgba(47, 61, 53, 0.22);
+  --accent: var(--living-green);
+  --accent-strong: var(--deep-green-gray);
+  --accent-soft: rgba(68, 133, 97, 0.16);
+  --critical-fg: #8f3d36;
+  --critical-bg: rgba(143, 61, 54, 0.13);
+  --warning-fg: #8a6a2d;
+  --warning-bg: rgba(138, 106, 45, 0.14);
+  --watch-fg: #45645d;
+  --watch-bg: rgba(82, 109, 103, 0.15);
+  --ok-fg: #386f54;
+  --ok-bg: rgba(56, 111, 84, 0.14);
+  font-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
 }
 
 * {
@@ -34,7 +43,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
   letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
@@ -156,11 +165,19 @@ label {
 }
 
 .main-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   border-radius: 6px;
   color: var(--muted);
   padding: 6px 10px;
   font-size: 0.89rem;
   transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.main-nav a svg {
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .main-nav a:hover,
@@ -306,7 +323,7 @@ main {
 .login-panel {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--bg);
+  background: var(--bg-card);
 }
 
 .metric-card {
@@ -318,8 +335,8 @@ main {
 }
 
 .metric-card:hover {
-  border-color: rgba(55, 53, 47, 0.18);
-  box-shadow: 0 1px 3px rgba(55, 53, 47, 0.08);
+  border-color: rgba(47, 61, 53, 0.35);
+  box-shadow: 0 1px 3px rgba(26, 33, 29, 0.1);
 }
 
 .metric-card__header {
@@ -445,8 +462,8 @@ main {
 
 .site-row:hover,
 .site-row:focus-visible {
-  border-color: rgba(55, 53, 47, 0.18);
-  box-shadow: 0 1px 3px rgba(55, 53, 47, 0.08);
+  border-color: rgba(47, 61, 53, 0.35);
+  box-shadow: 0 1px 3px rgba(26, 33, 29, 0.1);
 }
 
 .table-wrap {
@@ -458,7 +475,7 @@ main {
 table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--bg);
+  background: var(--bg-card);
 }
 
 table.table-wide {
@@ -529,7 +546,7 @@ tbody tr:hover {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(55, 53, 47, 0.35);
+  background: rgba(26, 33, 29, 0.4);
   padding: 20px;
 }
 
@@ -537,9 +554,9 @@ tbody tr:hover {
   width: min(420px, 100%);
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--bg);
+  background: var(--warm-background);
   padding: 20px;
-  box-shadow: 0 8px 24px rgba(55, 53, 47, 0.16);
+  box-shadow: 0 8px 24px rgba(26, 33, 29, 0.2);
 }
 
 .dialog__actions {
@@ -570,7 +587,7 @@ tbody tr:hover {
   gap: 20px;
   width: min(400px, 100%);
   padding: 32px;
-  box-shadow: 0 1px 3px rgba(55, 53, 47, 0.08);
+  box-shadow: 0 1px 3px rgba(26, 33, 29, 0.1);
 }
 
 .login-panel img {
