@@ -23,8 +23,8 @@ Primary font: IBM Plex Serif. The CSS uses `IBM Plex Serif, Georgia, Times New R
 - Use calm status labels: OK, Watch, Warning, Critical, Offline, Simulated, Manual Override.
 - Prefer direct operational language: `System stable`, `Sensor quality degraded`, `Rule simulated`, `Action blocked by safety policy`.
 
-## Placeholder Assets
+## Assets
 
-`apps/web/public/greecon-logo-placeholder.svg` is a temporary mark. Replace it with the real Greecon logo when available.
+`apps/web/public/greecon-logo.svg` is the real Greecon mark.
 
 Do not put confidential GAIA Tech identity or internals into public UI unless explicitly approved for internal-only deployments.
