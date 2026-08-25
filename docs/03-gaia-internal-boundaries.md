@@ -45,6 +45,6 @@ The web app must show outcomes and explanations, not confidential mechanics. For
 
 ## Logo Placement
 
-The current web app includes `apps/web/public/greecon-logo-placeholder.svg`. Replace it with the official Greecon logo when available.
+The web app includes the official mark at `apps/web/public/greecon-logo.svg`.
 
 GAIA Tech marks should not be placed in public UI by default. If an internal GAIA logo is needed, store it outside `apps/web/public` in a private internal asset location and keep it out of browser bundles.
