@@ -8,7 +8,7 @@ export function Shell({ children, title, subtitle }: { children: ReactNode; titl
     <div className="app-shell">
       <aside className="sidebar" aria-label="Main navigation">
         <Link href="/" className="brand">
-          <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="" width="28" height="39" />
+          <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="" width="22" height="31" />
           <span>Greecon</span>
         </Link>
         <Nav />
@@ -25,8 +25,10 @@ export function Shell({ children, title, subtitle }: { children: ReactNode; titl
             {subtitle ? <p className="topbar__subtitle">{subtitle}</p> : null}
           </div>
           <div className="access-chip">
-            <span>Secure access</span>
-            <strong>Operator</strong>
+            <div>
+              <span>Secure access</span>
+              <strong>Operator</strong>
+            </div>
           </div>
         </header>
         <main>{children}</main>

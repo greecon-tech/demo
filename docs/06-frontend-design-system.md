@@ -4,20 +4,23 @@ The interface must feel calm, precise, stable, minimal, and long-term.
 
 ## Typography
 
-Primary font: IBM Plex Serif. The CSS uses `IBM Plex Serif, Georgia, Times New Roman, serif`. Add licensed/local IBM Plex Serif font files later if self-hosting is required.
+Primary font: the system UI sans-serif stack (`ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif`) — Notion's own default typeface choice, and it ships with zero font-loading cost or external dependency.
 
 ## Colors
 
-- Warm background: `#f7f1e9`
-- Surface: `#e8e0d3`
-- Deep green-gray: `#2f3d35`
-- Pale green-blue: `#d8e2dc`
-- Living green: `#448561`
-- Near-black green: `#1a211d`
+Notion-inspired neutrals with the Greecon brand green kept as the sole accent:
+
+- Background: `#ffffff`
+- Sidebar/surface: `#fbfbfa`
+- Ink (text): `#37352f`
+- Border: `rgba(55, 53, 47, 0.1)`
+- Accent (brand green): `#448561`
+- Status colors use soft tinted-background pills rather than outlined ones — see `.status-*` in `globals.css`.
 
 ## UI Rules
 
-- Use subtle borders and stable spacing.
+- Flat over boxed: subtle 1px borders and hover-triggered elevation, not heavy tinted card backgrounds.
+- Generous whitespace and hover affordances (row highlight, active-nav state) over dense chrome.
 - Keep cards to operational data, repeated items, and dialogs.
 - Avoid neon colors, startup gradients, flashy motion, glassmorphism, excessive shadows, and hype copy.
 - Use calm status labels: OK, Watch, Warning, Critical, Offline, Simulated, Manual Override.
