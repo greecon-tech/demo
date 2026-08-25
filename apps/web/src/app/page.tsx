@@ -42,7 +42,7 @@ export default async function OverviewPage() {
   const siteName = new Map(overview.sites.map((site) => [site.id, site.name]));
 
   return (
-    <Shell title="Platform Overview" subtitle="Integrated energy, water, agriculture, automation, and edge status.">
+    <Shell title="Overview" subtitle="Integrated energy, water, agriculture, automation, and edge status.">
       <MetricGrid metrics={metrics} />
       <div className="split">
         <Section title="Sites">
