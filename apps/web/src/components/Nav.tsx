@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
+import { hasPermission, Permission, UserRole } from "@greecon/shared";
 
-const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode }> = [
+const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; requires?: Permission }> = [
   {
     href: "/",
     label: "Overview",
@@ -53,6 +54,7 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode }> 
   {
     href: "/reports",
     label: "Reports",
+    requires: "report:export",
     icon: (
       <>
         <rect x="3" y="1.8" width="10" height="12.4" rx="1.2" />
@@ -63,6 +65,7 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode }> 
   {
     href: "/audit",
     label: "Audit",
+    requires: "audit:read",
     icon: (
       <>
         <path d="M4.5 4h8M4.5 8h8M4.5 12h5" />
@@ -72,10 +75,11 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode }> 
       </>
     )
   },
-  { href: "/admin", label: "Admin", icon: <path d="M8 1.7 13 3.6v3.8c0 3.6-2.3 6.2-5 7-2.7-.8-5-3.4-5-7V3.6Z" /> },
+  { href: "/admin", label: "Admin", requires: "user:manage", icon: <path d="M8 1.7 13 3.6v3.8c0 3.6-2.3 6.2-5 7-2.7-.8-5-3.4-5-7V3.6Z" /> },
   {
     href: "/settings",
     label: "Settings",
+    requires: "settings:manage",
     icon: (
       <>
         <circle cx="8" cy="8" r="2.6" />
@@ -85,12 +89,13 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode }> 
   }
 ];
 
-export function Nav() {
+export function Nav({ role }: { role: UserRole }) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter((item) => !item.requires || hasPermission(role, item.requires));
 
   return (
     <nav className="main-nav" aria-label="Sections">
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
         return (
           <Link href={item.href} key={item.href} aria-current={active ? "page" : undefined}>

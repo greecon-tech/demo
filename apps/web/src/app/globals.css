@@ -312,6 +312,54 @@ main {
   font-weight: 500;
 }
 
+.role-switch {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.role-switch summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.role-switch summary::-webkit-details-marker {
+  display: none;
+}
+
+.role-switch summary::after {
+  content: "▾";
+  margin-left: 8px;
+  color: var(--faint);
+  font-size: 0.7rem;
+}
+
+.role-switch__menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 10;
+  display: grid;
+  gap: 2px;
+  min-width: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(26, 33, 29, 0.16);
+}
+
+.role-switch__menu a {
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.role-switch__menu a:hover {
+  background: var(--bg-hover);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));

@@ -1,6 +1,8 @@
 # Publishes a static demo snapshot to GitHub Pages — real seeded data baked
 # into static HTML at build time, no live backend or database involved once
-# published. See docs/12-deployment-github-pages.md.
+# published. Builds one variant per user role (owner, admin, operator, viewer,
+# auditor) so the demo shows what each role actually sees, and combines them
+# into one Pages artifact under sibling paths. See docs/12-deployment-github-pages.md.
 name: Publish demo to GitHub Pages
 
 on:
@@ -41,16 +43,34 @@ jobs:
           echo "API did not become healthy in time" >&2
           exit 1
 
-      - name: Build a static export of the web app
+      - name: Build a static export per user role
         env:
           NEXT_OUTPUT_EXPORT: "1"
-          NEXT_BASE_PATH: /${{ github.event.repository.name }}
           GREECON_API_URL: http://localhost:4000
-        run: npm run build -w @greecon/web
+          GREECON_SITE_ROOT: /${{ github.event.repository.name }}
+        run: |
+          set -e
+          mkdir -p publish
+          # "operator" stays at the site root so the existing published URL keeps working;
+          # the other roles publish alongside it so every role has its own link.
+          for role in operator owner admin viewer auditor; do
+            rm -rf apps/web/.next apps/web/out
+            if [ "$role" = "operator" ]; then
+              dest="publish"
+              export NEXT_BASE_PATH="$GREECON_SITE_ROOT"
+            else
+              dest="publish/$role"
+              export NEXT_BASE_PATH="$GREECON_SITE_ROOT/$role"
+            fi
+            export GREECON_DEMO_ROLE="$role"
+            npm run build -w @greecon/web
+            mkdir -p "$dest"
+            cp -r apps/web/out/. "$dest/"
+          done
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: apps/web/out
+          path: publish
 
   deploy:
     needs: build
