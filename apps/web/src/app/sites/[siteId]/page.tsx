@@ -1,7 +1,6 @@
 import { DataTable } from "../../../components/DataTable";
 import { MetricGrid } from "../../../components/MetricGrid";
 import { Section } from "../../../components/Section";
-import { SensorMap } from "../../../components/SensorMap";
 import { Shell } from "../../../components/Shell";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { apiGet } from "../../../lib/api";
@@ -10,8 +9,6 @@ import { Metric } from "../../../lib/types";
 interface SiteDetail {
   site: { id: string; name: string; type: string; locationName: string; status: string; edgeStatus: string };
   assets: Array<{ id: string; name: string; type: string; status: string }>;
-  devices: Array<{ id: string; name: string; deviceType: string; protocol: string; health: string; lastSeenUtc?: string }>;
-  points: Array<{ id: string; deviceId: string; label: string; unit: string }>;
   latestTelemetry: Array<{ pointId: string; canonicalName: string; value: number | boolean | string; unit: string; quality: string }>;
   rules: Array<{ id: string; name: string; priority: string; executionMode: string; approvalState: string }>;
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
@@ -44,7 +41,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
         <MetricGrid metrics={metrics} />
       </Section>
       <Section title="Equipment">
-        <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />
+        <DataTable
+          rows={detail.assets}
+          columns={[
+            { key: "name", label: "Asset" },
+            { key: "type", label: "Type" },
+            { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> }
+          ]}
+        />
       </Section>
       <Section title="Automation">
         <DataTable
