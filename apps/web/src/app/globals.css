@@ -370,6 +370,80 @@ main {
   font-size: 0.82rem;
 }
 
+.sensor-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.sensor-node {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-card);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.sensor-node:hover {
+  border-color: rgba(47, 61, 53, 0.35);
+  box-shadow: 0 1px 3px rgba(26, 33, 29, 0.1);
+}
+
+.sensor-node__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sensor-node__header p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.sensor-node__readings {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.sensor-node__reading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.86rem;
+}
+
+.sensor-node__reading > span {
+  color: var(--muted);
+}
+
+.sensor-node__reading-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sensor-node__reading-value strong {
+  font-weight: 600;
+}
+
+.sensor-node__reading-value small {
+  color: var(--faint);
+  font-weight: 400;
+}
+
+.sensor-node__meta {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
 .status {
   display: inline-flex;
   align-items: center;
