@@ -27,6 +27,7 @@ export interface SafetyLimits {
   dryRunFlowLpm: number;
   maxPumpRuntimeMinutes: number;
   minPumpRestMinutes: number;
+  maxIrrigationRunMinutes: number;
 }
 
 export interface SafetyContext {
@@ -51,7 +52,8 @@ export const defaultSafetyLimits: SafetyLimits = {
   maxPressureBar: 5.5,
   dryRunFlowLpm: 0.2,
   maxPumpRuntimeMinutes: 45,
-  minPumpRestMinutes: 10
+  minPumpRestMinutes: 10,
+  maxIrrigationRunMinutes: 120
 };
 
 const priorityWeight: Record<RulePriorityLevel, number> = {
@@ -73,7 +75,9 @@ export function requiredSensorPointsForCommand(command: CommandMessage): Canonic
   }
 
   if (command.target.canonicalName === "agri.irrigation.command") {
-    return ["agri.soil.moisture.percent", "water.pressure.bar"];
+    // Irrigation zones are a separate water circuit from the pump station's pressurized main —
+    // they are not required to share a pressure sensor, so only soil moisture gates this command.
+    return ["agri.soil.moisture.percent"];
   }
 
   return [];
@@ -143,6 +147,12 @@ export function evaluateCommandSafety(context: SafetyContext): SafetyEvaluation 
       if (minutesSinceStop < limits.minPumpRestMinutes) {
         reasons.push(`Pump rest time is ${minutesSinceStop.toFixed(1)} minutes; minimum is ${limits.minPumpRestMinutes}.`);
       }
+    }
+  }
+
+  if (command.target.canonicalName === "agri.irrigation.command" && isOnValue(command.requestedValue) && command.manualOverride) {
+    if (command.manualOverride.durationMinutes > limits.maxIrrigationRunMinutes) {
+      reasons.push(`Irrigation run of ${command.manualOverride.durationMinutes} minutes exceeds the maximum single run of ${limits.maxIrrigationRunMinutes} minutes.`);
     }
   }
 

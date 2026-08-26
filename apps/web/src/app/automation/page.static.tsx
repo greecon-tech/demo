@@ -1,6 +1,5 @@
 import { hasPermission } from "@greecon/shared";
 import { DataTable } from "../../components/DataTable";
-import { ManualOverridePanel } from "../../components/ManualOverridePanel";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -67,8 +66,12 @@ export default async function AutomationPage() {
             ]}
           />
         </Section>
-        <Section title="Manual Override">
-          <ManualOverridePanel />
+        <Section title="Manual Control" aside={<span className="muted">Automatic (rules/AI) is the default mode</span>}>
+          <div className="panel">
+            <p className="muted">
+              Manual control requires a live deployment (Railway or Google Cloud) — this build is a static snapshot with no server to dispatch commands to. See docs/12-deployment-github-pages.md.
+            </p>
+          </div>
         </Section>
       </div>
     </Shell>

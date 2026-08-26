@@ -261,7 +261,8 @@ export class PlatformService implements OnModuleInit {
     { id: "33333333-3333-4333-8333-333333333304", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222202", name: "Pump Station North", type: "PumpStation", status: "OK" },
     { id: "33333333-3333-4333-8333-333333333305", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Irrigation Zone 1", type: "IrrigationZone", status: "OK" },
     { id: "33333333-3333-4333-8333-333333333306", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Greenhouse Block A", type: "Greenhouse", status: "OK" },
-    { id: "33333333-3333-4333-8333-333333333307", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Weather Station", type: "WeatherStation", status: "OK" }
+    { id: "33333333-3333-4333-8333-333333333307", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Weather Station", type: "WeatherStation", status: "OK" },
+    { id: "33333333-3333-4333-8333-333333333308", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Grid Connection", type: "GridConnection", status: "OK" }
   ];
 
   private readonly devices: Device[] = [
@@ -278,7 +279,10 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 18,
+      positionY: 22,
+      placementNote: "Roof-mounted array, north field corner"
     },
     {
       id: "44444444-4444-4444-8444-444444444402",
@@ -293,7 +297,10 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 50,
+      positionY: 50,
+      placementNote: "Battery enclosure, site plant room"
     },
     {
       id: "44444444-4444-4444-8444-444444444403",
@@ -308,7 +315,10 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 28,
+      positionY: 32,
+      placementNote: "Mounted on Primary Water Tank"
     },
     {
       id: "44444444-4444-4444-8444-444444444404",
@@ -323,7 +333,10 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 68,
+      positionY: 58,
+      placementNote: "Pump House North"
     },
     {
       id: "44444444-4444-4444-8444-444444444405",
@@ -338,7 +351,10 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 48,
+      positionY: 72,
+      placementNote: "Irrigation Zone 1, valve manifold"
     },
     {
       id: "44444444-4444-4444-8444-444444444406",
@@ -353,7 +369,28 @@ export class PlatformService implements OnModuleInit {
       health: "OK",
       lastSeenUtc: nowIso(),
       firmwareVersion: "sim-1.0.0",
-      secureIdentityStatus: "placeholder"
+      secureIdentityStatus: "placeholder",
+      positionX: 85,
+      positionY: 12,
+      placementNote: "Open field, east boundary"
+    },
+    {
+      id: "44444444-4444-4444-8444-444444444407",
+      tenantId: DEMO_TENANT_ID,
+      siteId: "22222222-2222-4222-8222-222222222201",
+      assetId: "33333333-3333-4333-8333-333333333308",
+      gatewayId: "77777777-7777-4777-8777-777777777701",
+      name: "Grid Meter",
+      deviceType: "grid_meter",
+      protocol: "simulated",
+      driverType: "simulated-grid-meter-driver",
+      health: "OK",
+      lastSeenUtc: nowIso(),
+      firmwareVersion: "sim-1.0.0",
+      secureIdentityStatus: "placeholder",
+      positionX: 12,
+      positionY: 82,
+      placementNote: "Utility interconnection point, site entrance"
     }
   ];
 
@@ -366,7 +403,15 @@ export class PlatformService implements OnModuleInit {
     { id: "55555555-5555-4555-8555-555555555506", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333305", deviceId: "44444444-4444-4444-8444-444444444405", canonicalName: "agri.soil.moisture.percent", label: "Soil moisture", unit: "%", quality: "OK", capability: "read", thresholdConfig: { irrigate_below: 28 } },
     { id: "55555555-5555-4555-8555-555555555507", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333307", deviceId: "44444444-4444-4444-8444-444444444406", canonicalName: "agri.air.temperature.c", label: "Air temperature", unit: "C", quality: "OK", capability: "read" },
     { id: "55555555-5555-4555-8555-555555555508", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333307", deviceId: "44444444-4444-4444-8444-444444444406", canonicalName: "agri.humidity.percent", label: "Humidity", unit: "%", quality: "OK", capability: "read" },
-    { id: "55555555-5555-4555-8555-555555555509", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222202", assetId: "33333333-3333-4333-8333-333333333304", deviceId: "44444444-4444-4444-8444-444444444404", canonicalName: "water.pump.command", label: "Pump command", unit: "state", quality: "OK", capability: "write" }
+    { id: "55555555-5555-4555-8555-555555555509", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222202", assetId: "33333333-3333-4333-8333-333333333304", deviceId: "44444444-4444-4444-8444-444444444404", canonicalName: "water.pump.command", label: "Pump command", unit: "state", quality: "OK", capability: "write" },
+    // Grid metering lives on Integrated Farm Site, which has no battery — proving grid
+    // import/export/consumption is tracked independently of battery presence, not derived from it.
+    { id: "55555555-5555-4555-8555-555555555510", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333308", deviceId: "44444444-4444-4444-8444-444444444407", canonicalName: "energy.grid.import.kw", label: "Grid import", unit: "kW", quality: "OK", capability: "read", thresholdConfig: { watch_high: 20 } },
+    { id: "55555555-5555-4555-8555-555555555511", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333308", deviceId: "44444444-4444-4444-8444-444444444407", canonicalName: "energy.grid.export.kw", label: "Grid export", unit: "kW", quality: "OK", capability: "read" },
+    { id: "55555555-5555-4555-8555-555555555512", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333308", deviceId: "44444444-4444-4444-8444-444444444407", canonicalName: "energy.consumption.kw", label: "Site consumption", unit: "kW", quality: "OK", capability: "read" },
+    // Irrigation actuation point — referenced by the "Irrigate when soil moisture is low" rule
+    // and by manual irrigation control, but previously had no backing point at all.
+    { id: "55555555-5555-4555-8555-555555555513", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333305", deviceId: "44444444-4444-4444-8444-444444444405", canonicalName: "agri.irrigation.command", label: "Irrigation command", unit: "state", quality: "OK", capability: "write", thresholdConfig: { max_runtime_minutes: 120, max_starts_per_day: 6 } }
   ];
 
   private telemetry: TelemetryReading[] = [
@@ -377,7 +422,10 @@ export class PlatformService implements OnModuleInit {
     reading("22222222-2222-4222-8222-222222222202", "33333333-3333-4333-8333-333333333304", "44444444-4444-4444-8444-444444444404", "55555555-5555-4555-8555-555555555505", "water.pressure.bar", 2.8, "bar", "OK", 6),
     reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333305", "44444444-4444-4444-8444-444444444405", "55555555-5555-4555-8555-555555555506", "agri.soil.moisture.percent", 24, "%", "OK", 5),
     reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333307", "44444444-4444-4444-8444-444444444406", "55555555-5555-4555-8555-555555555507", "agri.air.temperature.c", 24.5, "C", "OK", 4),
-    reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333307", "44444444-4444-4444-8444-444444444406", "55555555-5555-4555-8555-555555555508", "agri.humidity.percent", 62, "%", "OK", 3)
+    reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333307", "44444444-4444-4444-8444-444444444406", "55555555-5555-4555-8555-555555555508", "agri.humidity.percent", 62, "%", "OK", 3),
+    reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333308", "44444444-4444-4444-8444-444444444407", "55555555-5555-4555-8555-555555555510", "energy.grid.import.kw", 3.2, "kW", "OK", 2),
+    reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333308", "44444444-4444-4444-8444-444444444407", "55555555-5555-4555-8555-555555555511", "energy.grid.export.kw", 9.8, "kW", "OK", 2),
+    reading("22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333308", "44444444-4444-4444-8444-444444444407", "55555555-5555-4555-8555-555555555512", "energy.consumption.kw", 12.0, "kW", "OK", 2)
   ];
 
   private derivedStates: DerivedState[] = [
@@ -483,8 +531,16 @@ export class PlatformService implements OnModuleInit {
       sites: tenantSites,
       summaries: {
         energy: {
+          // Data-driven from whatever energy.* points a tenant's sites actually have — a site
+          // with no battery still reports grid import/export/consumption, and a site with no
+          // grid connection still reports solar/battery. Every field is optional by design so
+          // the UI can render only what's actually metered per deployment.
           solarPowerKw: this.latestNumber("energy.solar.power.kw"),
           batterySocPercent: this.latestNumber("energy.battery.soc.percent"),
+          batteryPowerKw: this.latestNumber("energy.battery.power.kw"),
+          consumptionKw: this.latestNumber("energy.consumption.kw"),
+          gridImportKw: this.latestNumber("energy.grid.import.kw"),
+          gridExportKw: this.latestNumber("energy.grid.export.kw"),
           surplusState: this.stateValue("energy.surplus_available") ? "Available" : "Constrained"
         },
         water: {

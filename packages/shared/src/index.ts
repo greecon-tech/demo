@@ -24,6 +24,7 @@ export const assetTypes = [
   "PumpStation",
   "IrrigationZone",
   "WeatherStation",
+  "GridConnection",
   "Gateway"
 ] as const;
 export type AssetType = (typeof assetTypes)[number];
@@ -227,6 +228,13 @@ export interface Device {
   lastSeenUtc?: string;
   firmwareVersion?: string;
   secureIdentityStatus: "placeholder" | "provisioned" | "revoked";
+  /** Physical placement on the site's land layout, as a percentage (0-100) of the map area —
+   * where the device actually sits in the field, not a computed/schematic position. Optional
+   * because it is captured during site commissioning; devices without it fall back to a
+   * generated layout. */
+  positionX?: number;
+  positionY?: number;
+  placementNote?: string;
 }
 
 export interface Point {

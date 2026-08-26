@@ -7,6 +7,9 @@ interface SensorMapDevice {
   protocol: string;
   health: string;
   lastSeenUtc?: string;
+  positionX?: number;
+  positionY?: number;
+  placementNote?: string;
 }
 
 interface SensorMapPoint {
@@ -43,10 +46,15 @@ export function SensorMap({
   const devicesWithPosition = layoutDevices(devices);
   const deviceBuckets = new Map(devices.map((device) => [device.id, worstBucket(device, points, readingByPoint)]));
   const presentStatuses = new Set(deviceBuckets.values());
+  const hasSurveyedPlacement = devices.some((device) => device.positionX !== undefined && device.positionY !== undefined);
 
   return (
     <div className="site-map-block">
-      <div className="site-map" role="img" aria-label="Schematic layout of site devices by status">
+      <div
+        className={`site-map${hasSurveyedPlacement ? " site-map--field" : ""}`}
+        role="img"
+        aria-label={hasSurveyedPlacement ? "Map of where each sensor is physically placed on site" : "Schematic layout of site devices by status"}
+      >
         {devicesWithPosition.map(({ device, x, y }) => {
           const bucket = deviceBuckets.get(device.id) ?? "ok";
           return (
@@ -54,7 +62,7 @@ export function SensorMap({
               className="site-map__node"
               key={device.id}
               style={{ left: `${x}%`, top: `${y}%` }}
-              title={`${device.name} — ${LEGEND_LABEL[bucket]}`}
+              title={`${device.name}${device.placementNote ? ` — ${device.placementNote}` : ""} — ${LEGEND_LABEL[bucket]}`}
             >
               <span className={`site-map__dot status-${bucket}`} />
               <span className="site-map__label">{device.name}</span>
@@ -62,6 +70,9 @@ export function SensorMap({
           );
         })}
       </div>
+      <p className="muted site-map__caption">
+        {hasSurveyedPlacement ? "Positions reflect where each sensor is physically installed on site." : "Real installed positions are not yet recorded for this site — showing a generated layout."}
+      </p>
       <div className="site-map__legend">
         {LEGEND_ORDER.filter((bucket) => presentStatuses.has(bucket)).map((bucket) => (
           <span className="site-map__legend-item" key={bucket}>
@@ -112,19 +123,29 @@ export function SensorMap({
   );
 }
 
-/** Even grid positions (as percentages) within the map area — devices have no real coordinates,
- * so this lays them out deterministically by index rather than a fixed pixel arrangement. */
+/** Prefers each device's real surveyed placement (positionX/positionY, captured at site
+ * commissioning) so the map shows where the sensor actually sits in the field. Only devices
+ * missing that data fall back to a deterministic generated grid, so an unsurveyed device still
+ * appears on the map without pretending to know its real location. */
 function layoutDevices(devices: readonly SensorMapDevice[]): Array<{ device: SensorMapDevice; x: number; y: number }> {
-  const count = devices.length;
+  const positioned = devices.filter((device) => device.positionX !== undefined && device.positionY !== undefined);
+  const unpositioned = devices.filter((device) => device.positionX === undefined || device.positionY === undefined);
+
+  const placed: Array<{ device: SensorMapDevice; x: number; y: number }> = positioned.map((device) => ({
+    device,
+    x: device.positionX as number,
+    y: device.positionY as number
+  }));
+
+  const count = unpositioned.length;
   const columns = Math.max(1, Math.ceil(Math.sqrt(count)));
   const rows = Math.max(1, Math.ceil(count / columns));
-  const placed: Array<{ device: SensorMapDevice; x: number; y: number }> = [];
 
   let index = 0;
   for (let row = 0; row < rows; row++) {
     const itemsInRow = Math.min(columns, count - row * columns);
     for (let col = 0; col < itemsInRow; col++) {
-      const device = devices[index];
+      const device = unpositioned[index];
       if (device) {
         placed.push({
           device,
