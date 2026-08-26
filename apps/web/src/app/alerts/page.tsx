@@ -21,7 +21,10 @@ interface Incident {
 }
 
 export default async function AlertsPage() {
-  const [alerts, incidents] = await Promise.all([apiGet<Alert[]>("/alerts"), apiGet<Incident[]>("/incidents")]);
+  // Pinned to "operator" — incident data requires incident:manage, which viewer and auditor
+  // builds don't hold (see docs/12-deployment-github-pages.md), so this can't follow the
+  // page's default demo role the way most other fetches do.
+  const [alerts, incidents] = await Promise.all([apiGet<Alert[]>("/alerts"), apiGet<Incident[]>("/incidents", "operator")]);
 
   return (
     <Shell title="Alerts" subtitle="Active alerts, suggested actions, and incident lifecycle.">

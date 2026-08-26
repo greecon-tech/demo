@@ -10,7 +10,17 @@ In the repo on GitHub: **Settings → Pages → Build and deployment → Source 
 
 ## Publishing
 
-Push to `main`, or run the workflow manually from the **Actions** tab → "Publish demo to GitHub Pages" → "Run workflow". The published URL is `https://greecon-tech.github.io/demo/` (shown under Settings → Pages, and as the `deploy` job's environment URL on each run).
+Push to `main`, or run the workflow manually from the **Actions** tab → "Publish demo to GitHub Pages" → "Run workflow". The workflow builds five static snapshots from the same seeded data — one per user role — and publishes them side by side:
+
+| Role     | URL                                                 |
+| -------- | ---------------------------------------------------- |
+| Operator | `https://greecon-tech.github.io/demo/`                |
+| Owner    | `https://greecon-tech.github.io/demo/owner/`          |
+| Admin    | `https://greecon-tech.github.io/demo/admin/`          |
+| Viewer   | `https://greecon-tech.github.io/demo/viewer/`         |
+| Auditor  | `https://greecon-tech.github.io/demo/auditor/`        |
+
+Operator stays at the site root so the URL already shared with prospects keeps working. Each page's "Viewing as" chip in the top bar opens a menu linking to the same role's sibling builds. The sidebar navigation itself changes per role — e.g. Admin and Settings are hidden for anyone without `user:manage` — so switching roles shows genuinely different access, not just a different label. The underlying seeded data is identical across all five; only the RBAC-driven navigation differs, since this is a fully static, read-only snapshot.
 
 ## Updating it
 
