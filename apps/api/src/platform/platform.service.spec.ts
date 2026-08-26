@@ -2,6 +2,7 @@ import { ForbiddenException } from "@nestjs/common";
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEMO_TENANT_ID, TelemetryMessage } from "@greecon/shared";
 import { Principal } from "../common/principal";
+import { DatabaseService } from "../database/database.service";
 import { PlatformService } from "./platform.service";
 
 const OWNER: Principal = {
@@ -26,7 +27,10 @@ describe("PlatformService", () => {
   let platform: PlatformService;
 
   beforeEach(() => {
-    platform = new PlatformService();
+    // No DATABASE_URL in the test environment, so DatabaseService.isConfigured() is false and
+    // every domain behaves exactly as the pure in-memory service these tests were written
+    // against — the same fallback path the static demo and local dev without Postgres use.
+    platform = new PlatformService(new DatabaseService());
   });
 
   describe("tenant isolation", () => {
@@ -38,8 +42,8 @@ describe("PlatformService", () => {
       expect(() => platform.siteDetail(SITE_ID, OTHER_TENANT)).toThrow(ForbiddenException);
     });
 
-    it("blocks issuing a command against a device outside the caller's tenant", () => {
-      expect(() =>
+    it("blocks issuing a command against a device outside the caller's tenant", async () => {
+      await expect(
         platform.createCommand(
           {
             siteId: SITE_ID,
@@ -50,12 +54,12 @@ describe("PlatformService", () => {
           },
           OTHER_TENANT
         )
-      ).toThrow(ForbiddenException);
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
   describe("telemetry ingestion validation", () => {
-    it("rejects a telemetry message with an unrecognized quality flag", () => {
+    it("rejects a telemetry message with an unrecognized quality flag", async () => {
       const message = {
         messageType: "telemetry",
         tenantId: DEMO_TENANT_ID,
@@ -80,12 +84,12 @@ describe("PlatformService", () => {
         ]
       } as unknown as TelemetryMessage;
 
-      const result = platform.ingestTelemetry(message, OWNER);
+      const result = await platform.ingestTelemetry(message, OWNER);
       expect(result.accepted).toBe(false);
       expect(result.errors.join(" ")).toContain("quality must be OK, WARN, or BAD");
     });
 
-    it("rejects telemetry addressed to a different tenant than the caller", () => {
+    it("rejects telemetry addressed to a different tenant than the caller", async () => {
       const message: TelemetryMessage = {
         messageType: "telemetry",
         tenantId: "other-tenant",
@@ -96,10 +100,10 @@ describe("PlatformService", () => {
         readings: []
       };
 
-      expect(() => platform.ingestTelemetry(message, OWNER)).toThrow(ForbiddenException);
+      await expect(platform.ingestTelemetry(message, OWNER)).rejects.toThrow(ForbiddenException);
     });
 
-    it("accepts a well-formed telemetry message and updates point quality", () => {
+    it("accepts a well-formed telemetry message and updates point quality", async () => {
       const message: TelemetryMessage = {
         messageType: "telemetry",
         tenantId: DEMO_TENANT_ID,
@@ -124,7 +128,7 @@ describe("PlatformService", () => {
         ]
       };
 
-      const result = platform.ingestTelemetry(message, OWNER);
+      const result = await platform.ingestTelemetry(message, OWNER);
       expect(result.accepted).toBe(true);
       expect(result.ingested).toBe(1);
 
@@ -134,10 +138,10 @@ describe("PlatformService", () => {
   });
 
   describe("manual override", () => {
-    it("records an audit event for a manual override request", () => {
+    it("records an audit event for a manual override request", async () => {
       const before = platform.listAudit(OWNER).length;
 
-      platform.createCommand(
+      await platform.createCommand(
         {
           siteId: SITE_ID,
           targetDeviceId: PUMP_DEVICE_ID,
@@ -157,8 +161,8 @@ describe("PlatformService", () => {
       expect(after.some((event) => event.eventType === "manual_override.requested")).toBe(true);
     });
 
-    it("blocks a manual override with an already-expired window", () => {
-      const record = platform.createCommand(
+    it("blocks a manual override with an already-expired window", async () => {
+      const record = await platform.createCommand(
         {
           siteId: SITE_ID,
           targetDeviceId: PUMP_DEVICE_ID,
@@ -179,8 +183,8 @@ describe("PlatformService", () => {
   });
 
   describe("command acknowledgement", () => {
-    it("moves a dispatched command to acknowledged on a successful ack", () => {
-      const record = platform.createCommand(
+    it("moves a dispatched command to acknowledged on a successful ack", async () => {
+      const record = await platform.createCommand(
         {
           siteId: SITE_ID,
           targetDeviceId: PUMP_DEVICE_ID,
@@ -191,7 +195,7 @@ describe("PlatformService", () => {
         OWNER
       );
 
-      const acknowledged = platform.acknowledgeCommand(
+      const acknowledged = await platform.acknowledgeCommand(
         record.id,
         {
           messageType: "command_ack",
