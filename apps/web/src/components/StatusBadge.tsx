@@ -5,6 +5,6 @@ export function StatusBadge({ status }: { status: Status | string }) {
   return <span className={className}>{status}</span>;
 }
 
-function normalizeStatus(status: string): string {
+export function normalizeStatus(status: string): string {
   return status.toLowerCase().replace(/\s+/g, "-");
 }
