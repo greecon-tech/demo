@@ -69,6 +69,7 @@ export interface CommandRecord {
   failureReason?: string;
   rollbackStatus?: string;
   auditEventId: string;
+  correlationId: string;
   createdAtUtc: string;
 }
 
@@ -156,17 +157,38 @@ export class PlatformService implements OnModuleInit {
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit(): Promise<void> {
-    // Rules are the one entity an admin can create/edit for a real pilot, so they're the one
-    // domain wired to Postgres — everything else here stays in-memory demo data (see
-    // docs/00-platform-vision.md's MVP boundary). When no DATABASE_URL is set (the static
-    // GitHub Pages demo, or local dev without a database), the hardcoded seed rules below apply
-    // instead, exactly as before.
+    // Every domain with a real mutating endpoint (rules, telemetry, commands, alerts,
+    // incidents, edge-sync, report exports, audit) hydrates from Postgres here and dual-writes
+    // on every mutation, so a restart doesn't lose real pilot data. Sites/assets/devices/points
+    // and maintenance tasks have no mutating endpoint at all yet — they stay the fixed seed data
+    // described in docs/00-platform-vision.md's MVP boundary regardless of DATABASE_URL. When no
+    // DATABASE_URL is set (the static GitHub Pages demo, or local dev without a database), all
+    // of this falls back to the hardcoded seed data below exactly as before.
     if (!this.db.isConfigured()) return;
 
-    const result = await this.db.query<RuleRow>("SELECT * FROM rules ORDER BY created_at ASC");
-    if (result.rows.length > 0) {
-      this.rules = result.rows.map((row) => mapRuleRow(row));
-    }
+    const rows = await this.db.query<RuleRow>("SELECT * FROM rules ORDER BY created_at ASC");
+    if (rows.rows.length > 0) this.rules = rows.rows.map((row) => mapRuleRow(row));
+
+    const telemetryRows = await this.db.query<TelemetryRow>("SELECT DISTINCT ON (point_id) * FROM telemetry_readings ORDER BY point_id, timestamp_utc DESC");
+    if (telemetryRows.rows.length > 0) this.telemetry = telemetryRows.rows.map((row) => mapTelemetryRow(row));
+
+    const commandRows = await this.db.query<CommandRow>("SELECT * FROM commands ORDER BY created_at DESC LIMIT 500");
+    if (commandRows.rows.length > 0) this.commands = commandRows.rows.map((row) => mapCommandRow(row, this.points));
+
+    const alertRows = await this.db.query<AlertRow>("SELECT * FROM alerts ORDER BY created_at DESC");
+    if (alertRows.rows.length > 0) this.alerts = alertRows.rows.map((row) => mapAlertRow(row));
+
+    const incidentRows = await this.db.query<IncidentRow>("SELECT * FROM incidents ORDER BY created_at DESC");
+    if (incidentRows.rows.length > 0) this.incidents = incidentRows.rows.map((row) => mapIncidentRow(row));
+
+    const auditRows = await this.db.query<AuditRow>("SELECT * FROM audit_events ORDER BY created_at DESC LIMIT 500");
+    if (auditRows.rows.length > 0) this.auditEvents = auditRows.rows.map((row) => mapAuditRow(row));
+
+    const edgeSyncRows = await this.db.query<EdgeSyncRow>("SELECT * FROM edge_sync_batches ORDER BY created_at DESC LIMIT 200");
+    if (edgeSyncRows.rows.length > 0) this.edgeSyncBatches = edgeSyncRows.rows.map((row) => mapEdgeSyncRow(row));
+
+    const reportRows = await this.db.query<ReportExportRow>("SELECT * FROM report_exports ORDER BY created_at DESC LIMIT 200");
+    if (reportRows.rows.length > 0) this.reportExports = reportRows.rows.map((row) => mapReportExportRow(row));
   }
 
   private readonly tenants: Tenant[] = [
@@ -365,11 +387,11 @@ export class PlatformService implements OnModuleInit {
   ];
 
   private rules: AutomationRule[] = demoRules();
-  private readonly commands: CommandRecord[] = [];
-  private readonly reportExports: Array<ReportExportInput & { id: string; status: string; requestedBy: string; createdAtUtc: string }> = [];
-  private readonly edgeSyncBatches: Array<EdgeSyncInput & { id: string; tenantId: string; createdAtUtc: string }> = [];
+  private commands: CommandRecord[] = [];
+  private reportExports: Array<ReportExportInput & { id: string; status: string; requestedBy: string; createdAtUtc: string }> = [];
+  private edgeSyncBatches: Array<EdgeSyncInput & { id: string; tenantId: string; createdAtUtc: string }> = [];
 
-  private readonly alerts: AlertRecord[] = [
+  private alerts: AlertRecord[] = [
     {
       id: "99999999-9999-4999-8999-999999999901",
       tenantId: DEMO_TENANT_ID,
@@ -396,7 +418,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly incidents: IncidentRecord[] = [
+  private incidents: IncidentRecord[] = [
     {
       id: "abababab-abab-4aba-8aba-ababababab01",
       tenantId: DEMO_TENANT_ID,
@@ -424,7 +446,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly auditEvents: AuditEvent[] = [
+  private auditEvents: AuditEvent[] = [
     audit("rule.approved", "rule", "88888888-8888-4888-8888-888888888801", "Initial MVP safety baseline.", "22222222-2222-4222-8222-222222222202", "33333333-3333-4333-8333-333333333304"),
     audit("rule.approved", "rule", "88888888-8888-4888-8888-888888888802", "Initial MVP safety baseline.", "22222222-2222-4222-8222-222222222202", "33333333-3333-4333-8333-333333333304"),
     audit("alert.acknowledged", "alert", "99999999-9999-4999-8999-999999999901", "Operator acknowledged demo low tank alert.", "22222222-2222-4222-8222-222222222202", "33333333-3333-4333-8333-333333333303")
@@ -524,7 +546,7 @@ export class PlatformService implements OnModuleInit {
     return this.latestReadings(this.telemetry.filter((readingValue) => readingValue.tenantId === principal.tenantId && (!siteId || readingValue.siteId === siteId)));
   }
 
-  ingestTelemetry(message: TelemetryMessage, principal: Principal) {
+  async ingestTelemetry(message: TelemetryMessage, principal: Principal) {
     if (principal.tenantId !== message.tenantId) {
       throw new ForbiddenException("Telemetry tenant does not match request context.");
     }
@@ -540,9 +562,18 @@ export class PlatformService implements OnModuleInit {
     const normalized = message.readings.map((item) => normalizeTelemetryTimestamp(item));
     for (const item of normalized) {
       this.requireSite(item.siteId, principal.tenantId);
-      this.telemetry.push(item);
-      const point = this.points.find((candidate) => candidate.id === item.pointId && candidate.tenantId === principal.tenantId);
-      if (point) point.quality = item.quality;
+      // A real gateway can send a typo'd or unprovisioned deviceId/pointId — reject it here with
+      // a clear 404 rather than let it reach Postgres and surface as an opaque FK-violation 500.
+      this.requireDevice(item.deviceId, principal.tenantId);
+      const point = this.requirePoint(item.pointId, principal.tenantId);
+      this.upsertLatestTelemetry(item);
+      point.quality = item.quality;
+    }
+
+    if (this.db.isConfigured()) {
+      for (const item of normalized) {
+        await this.persistTelemetryReading(item);
+      }
     }
 
     this.refreshDerivedStates(principal.tenantId, message.siteId);
@@ -621,7 +652,7 @@ export class PlatformService implements OnModuleInit {
     }
 
     this.rules.push(rule);
-    this.recordAudit({
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "rule.created",
@@ -675,7 +706,7 @@ export class PlatformService implements OnModuleInit {
       );
     }
 
-    this.recordAudit({
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "rule.updated",
@@ -711,7 +742,7 @@ export class PlatformService implements OnModuleInit {
       ]);
     }
 
-    this.recordAudit({
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: approvalState === "approved" ? "rule.approved" : approvalState === "disabled" ? "rule.disabled" : "rule.reverted_to_draft",
@@ -738,7 +769,7 @@ export class PlatformService implements OnModuleInit {
     }
 
     this.rules = this.rules.filter((candidate) => candidate.id !== rule.id);
-    this.recordAudit({
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "rule.deleted",
@@ -752,7 +783,7 @@ export class PlatformService implements OnModuleInit {
     return { deleted: true };
   }
 
-  createCommand(input: CreateCommandInput, principal: Principal): CommandRecord {
+  async createCommand(input: CreateCommandInput, principal: Principal): Promise<CommandRecord> {
     if (!hasPermission(principal.role, "command:create")) {
       throw new ForbiddenException("Action blocked by access policy.");
     }
@@ -798,7 +829,7 @@ export class PlatformService implements OnModuleInit {
       systemMode: "automatic"
     });
 
-    const auditEvent = this.recordAudit({
+    const auditEvent = await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: safetyEvaluation.allowed ? "command.simulated_dispatch" : "command.blocked",
@@ -828,13 +859,15 @@ export class PlatformService implements OnModuleInit {
       failureReason: safetyEvaluation.allowed ? undefined : safetyEvaluation.reasons.join(" "),
       rollbackStatus: safetyEvaluation.allowed ? "not_required" : "not_dispatched",
       auditEventId: auditEvent.id,
+      correlationId: commandMessage.correlationId,
       createdAtUtc: issuedAtUtc
     };
 
     this.commands.unshift(record);
+    if (this.db.isConfigured()) await this.persistCommand(record);
 
     if (input.manualOverride) {
-      this.recordAudit({
+      await this.recordAudit({
         tenantId: principal.tenantId,
         userId: principal.userId,
         eventType: "manual_override.requested",
@@ -858,7 +891,7 @@ export class PlatformService implements OnModuleInit {
     return this.scope(this.commands, principal.tenantId);
   }
 
-  acknowledgeCommand(commandId: string, ack: CommandAckMessage, principal: Principal): CommandRecord {
+  async acknowledgeCommand(commandId: string, ack: CommandAckMessage, principal: Principal): Promise<CommandRecord> {
     const command = this.commands.find((candidate) => candidate.id === commandId && candidate.tenantId === principal.tenantId);
     if (!command) throw new NotFoundException("Command not found.");
 
@@ -867,7 +900,9 @@ export class PlatformService implements OnModuleInit {
     command.failureReason = ack.failureReason;
     command.result = ack.result;
 
-    this.recordAudit({
+    if (this.db.isConfigured()) await this.persistCommand(command);
+
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "command.acknowledged",
@@ -885,13 +920,17 @@ export class PlatformService implements OnModuleInit {
     return this.scope(this.alerts, principal.tenantId).filter((alert) => !siteId || alert.siteId === siteId);
   }
 
-  acknowledgeAlert(alertId: string, principal: Principal): AlertRecord {
+  async acknowledgeAlert(alertId: string, principal: Principal): Promise<AlertRecord> {
     const alert = this.alerts.find((candidate) => candidate.id === alertId && candidate.tenantId === principal.tenantId);
     if (!alert) throw new NotFoundException("Alert not found.");
     const before = { status: alert.status };
     alert.status = "acknowledged";
 
-    this.recordAudit({
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE alerts SET status=$1, acknowledged_at=now() WHERE id=$2 AND tenant_id=$3`, [alert.status, alert.id, principal.tenantId]);
+    }
+
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "alert.acknowledged",
@@ -911,13 +950,18 @@ export class PlatformService implements OnModuleInit {
     return this.scope(this.incidents, principal.tenantId);
   }
 
-  updateIncidentStatus(id: string, status: IncidentRecord["status"], principal: Principal): IncidentRecord {
+  async updateIncidentStatus(id: string, status: IncidentRecord["status"], principal: Principal): Promise<IncidentRecord> {
     const incident = this.incidents.find((candidate) => candidate.id === id && candidate.tenantId === principal.tenantId);
     if (!incident) throw new NotFoundException("Incident not found.");
     const before = { status: incident.status };
     incident.status = status;
     incident.updatedAtUtc = nowIso();
-    this.recordAudit({
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE incidents SET status=$1, updated_at=now() WHERE id=$2 AND tenant_id=$3`, [incident.status, incident.id, principal.tenantId]);
+    }
+
+    await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "incident.status_changed",
@@ -944,8 +988,8 @@ export class PlatformService implements OnModuleInit {
     ];
   }
 
-  createReportExport(input: ReportExportInput, principal: Principal) {
-    const auditEvent = this.recordAudit({
+  async createReportExport(input: ReportExportInput, principal: Principal) {
+    const auditEvent = await this.recordAudit({
       tenantId: principal.tenantId,
       userId: principal.userId,
       eventType: "report.export_requested",
@@ -963,6 +1007,25 @@ export class PlatformService implements OnModuleInit {
       createdAtUtc: auditEvent.createdAtUtc
     };
     this.reportExports.unshift(exportRecord);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO report_exports (id, tenant_id, site_id, requested_by, report_type, parameters, export_status, audit_event_id, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          exportRecord.id,
+          principal.tenantId,
+          exportRecord.siteId ?? null,
+          principal.userId,
+          exportRecord.reportType,
+          JSON.stringify(exportRecord.parameters ?? {}),
+          exportRecord.status,
+          auditEvent.id,
+          exportRecord.createdAtUtc
+        ]
+      );
+    }
+
     return exportRecord;
   }
 
@@ -970,7 +1033,7 @@ export class PlatformService implements OnModuleInit {
     return this.scope(this.auditEvents, principal.tenantId).filter((event) => !siteId || event.siteId === siteId);
   }
 
-  recordEdgeSync(input: EdgeSyncInput, principal: Principal) {
+  async recordEdgeSync(input: EdgeSyncInput, principal: Principal) {
     this.requireSite(input.siteId, principal.tenantId);
     const batch = {
       ...input,
@@ -979,6 +1042,15 @@ export class PlatformService implements OnModuleInit {
       createdAtUtc: nowIso()
     };
     this.edgeSyncBatches.unshift(batch);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO edge_sync_batches (id, tenant_id, site_id, gateway_id, status, buffered_readings, started_at, completed_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [batch.id, batch.tenantId, batch.siteId, batch.gatewayId, batch.status, batch.bufferedReadings, batch.startedAtUtc, batch.completedAtUtc ?? null, batch.createdAtUtc]
+      );
+    }
+
     return batch;
   }
 
@@ -1059,6 +1131,72 @@ export class PlatformService implements OnModuleInit {
     return [...latest.values()].sort((a, b) => a.canonicalName.localeCompare(b.canonicalName));
   }
 
+  // this.telemetry only ever holds one row per point (the latest) — every consumer already
+  // reduces to latest-per-point via latestReadings, so keeping full history in memory would only
+  // grow unbounded for no benefit. Full history lives in Postgres once DATABASE_URL is set.
+  private upsertLatestTelemetry(item: TelemetryReading): void {
+    const index = this.telemetry.findIndex((existing) => existing.pointId === item.pointId);
+    if (index >= 0) this.telemetry[index] = item;
+    else this.telemetry.push(item);
+  }
+
+  private async persistTelemetryReading(item: TelemetryReading): Promise<void> {
+    await this.db.query(
+      `INSERT INTO telemetry_readings (timestamp_utc, tenant_id, site_id, asset_id, device_id, point_id, canonical_name, value_numeric, value_text, value_bool, unit, quality, source, ingestion_timestamp_utc)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        item.timestampUtc,
+        item.tenantId,
+        item.siteId,
+        item.assetId ?? null,
+        item.deviceId,
+        item.pointId,
+        item.canonicalName,
+        typeof item.value === "number" ? item.value : null,
+        typeof item.value === "string" ? item.value : null,
+        typeof item.value === "boolean" ? item.value : null,
+        item.unit,
+        item.quality,
+        item.source,
+        item.ingestionTimestampUtc
+      ]
+    );
+  }
+
+  private async persistCommand(record: CommandRecord): Promise<void> {
+    await this.db.query(
+      `INSERT INTO commands (id, tenant_id, site_id, target_device_id, target_point_id, requested_value, requested_by, requested_by_role, reason, safety_evaluation, dispatch_status, acknowledgement, result, failure_reason, rollback_status, audit_event_id, correlation_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,now())
+       ON CONFLICT (id) DO UPDATE SET
+         dispatch_status=EXCLUDED.dispatch_status,
+         acknowledgement=EXCLUDED.acknowledgement,
+         result=EXCLUDED.result,
+         failure_reason=EXCLUDED.failure_reason,
+         rollback_status=EXCLUDED.rollback_status,
+         updated_at=now()`,
+      [
+        record.id,
+        record.tenantId,
+        record.siteId,
+        record.targetDeviceId,
+        record.targetPointId,
+        JSON.stringify(record.requestedValue),
+        record.requestedBy,
+        record.requestedByRole,
+        record.reason,
+        JSON.stringify(record.safetyEvaluation),
+        record.dispatchStatus,
+        record.acknowledgement ? JSON.stringify(record.acknowledgement) : null,
+        record.result ?? null,
+        record.failureReason ?? null,
+        record.rollbackStatus ?? null,
+        record.auditEventId,
+        record.correlationId,
+        record.createdAtUtc
+      ]
+    );
+  }
+
   private latestNumber(canonicalName: string): number | undefined {
     const readingValue = this.latestReadings(this.telemetry).find((item) => item.canonicalName === canonicalName);
     return typeof readingValue?.value === "number" ? readingValue.value : undefined;
@@ -1110,13 +1248,38 @@ export class PlatformService implements OnModuleInit {
     }
   }
 
-  private recordAudit(event: Omit<AuditEvent, "id" | "createdAtUtc">): AuditEvent {
+  // Awaited (not fire-and-forget) because commands and report exports store this event's id as
+  // a foreign key immediately after — a background write here could lose the race and violate
+  // that constraint.
+  private async recordAudit(event: Omit<AuditEvent, "id" | "createdAtUtc">): Promise<AuditEvent> {
     const auditEvent: AuditEvent = {
       ...event,
       id: randomUUID(),
       createdAtUtc: nowIso()
     };
     this.auditEvents.unshift(auditEvent);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO audit_events (id, tenant_id, user_id, event_type, site_id, asset_id, entity_type, entity_id, before_metadata, after_metadata, reason, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [
+          auditEvent.id,
+          auditEvent.tenantId,
+          auditEvent.userId,
+          auditEvent.eventType,
+          auditEvent.siteId ?? null,
+          auditEvent.assetId ?? null,
+          auditEvent.entityType,
+          auditEvent.entityId ?? null,
+          auditEvent.beforeMetadata ? JSON.stringify(auditEvent.beforeMetadata) : null,
+          auditEvent.afterMetadata ? JSON.stringify(auditEvent.afterMetadata) : null,
+          auditEvent.reason ?? null,
+          auditEvent.createdAtUtc
+        ]
+      );
+    }
+
     return auditEvent;
   }
 }
@@ -1160,6 +1323,221 @@ function mapRuleRow(row: RuleRow): AutomationRule {
     version: row.version,
     createdBy: row.created_by ?? "",
     updatedBy: row.updated_by ?? ""
+  };
+}
+
+interface TelemetryRow {
+  timestamp_utc: string;
+  tenant_id: string;
+  site_id: string;
+  asset_id: string | null;
+  device_id: string;
+  point_id: string;
+  canonical_name: string;
+  value_numeric: number | null;
+  value_text: string | null;
+  value_bool: boolean | null;
+  unit: string;
+  quality: string;
+  source: string;
+  ingestion_timestamp_utc: string;
+}
+
+function mapTelemetryRow(row: TelemetryRow): TelemetryReading {
+  const value = row.value_numeric ?? row.value_bool ?? row.value_text ?? "";
+  return {
+    timestampUtc: row.timestamp_utc,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    assetId: row.asset_id ?? undefined,
+    deviceId: row.device_id,
+    pointId: row.point_id,
+    canonicalName: row.canonical_name as TelemetryReading["canonicalName"],
+    value,
+    unit: row.unit,
+    quality: row.quality as TelemetryReading["quality"],
+    source: row.source as TelemetryReading["source"],
+    ingestionTimestampUtc: row.ingestion_timestamp_utc
+  };
+}
+
+interface CommandRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  target_device_id: string;
+  target_point_id: string;
+  requested_value: number | boolean | string;
+  requested_by: string;
+  requested_by_role: string;
+  reason: string;
+  safety_evaluation: CommandRecord["safetyEvaluation"];
+  dispatch_status: string;
+  acknowledgement: CommandAckMessage | null;
+  result: string | null;
+  failure_reason: string | null;
+  rollback_status: string | null;
+  audit_event_id: string;
+  correlation_id: string;
+  created_at: string;
+}
+
+function mapCommandRow(row: CommandRow, points: readonly Point[]): CommandRecord {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    targetDeviceId: row.target_device_id,
+    targetPointId: row.target_point_id,
+    canonicalName: points.find((point) => point.id === row.target_point_id)?.canonicalName ?? row.target_point_id,
+    requestedValue: row.requested_value,
+    requestedBy: row.requested_by,
+    requestedByRole: row.requested_by_role as UserRole,
+    reason: row.reason,
+    safetyEvaluation: row.safety_evaluation,
+    dispatchStatus: row.dispatch_status as CommandRecord["dispatchStatus"],
+    acknowledgement: row.acknowledgement ?? undefined,
+    result: row.result ?? undefined,
+    failureReason: row.failure_reason ?? undefined,
+    rollbackStatus: row.rollback_status ?? undefined,
+    auditEventId: row.audit_event_id,
+    correlationId: row.correlation_id,
+    createdAtUtc: row.created_at
+  };
+}
+
+interface AlertRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  asset_id: string | null;
+  category: string;
+  severity: string;
+  status: string;
+  title: string;
+  suggested_action: string;
+  created_at: string;
+}
+
+function mapAlertRow(row: AlertRow): AlertRecord {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    assetId: row.asset_id ?? undefined,
+    category: row.category as AlertRecord["category"],
+    severity: row.severity as AlertRecord["severity"],
+    status: row.status as AlertRecord["status"],
+    title: row.title,
+    suggestedAction: row.suggested_action,
+    createdAtUtc: row.created_at
+  };
+}
+
+interface IncidentRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  alert_id: string | null;
+  status: string;
+  severity: string;
+  title: string;
+  investigation_notes: string | null;
+  updated_at: string;
+}
+
+function mapIncidentRow(row: IncidentRow): IncidentRecord {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    alertId: row.alert_id ?? undefined,
+    status: row.status as IncidentRecord["status"],
+    severity: row.severity as IncidentRecord["severity"],
+    title: row.title,
+    investigationNotes: row.investigation_notes ?? undefined,
+    updatedAtUtc: row.updated_at
+  };
+}
+
+interface AuditRow {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  event_type: string;
+  site_id: string | null;
+  asset_id: string | null;
+  entity_type: string;
+  entity_id: string | null;
+  before_metadata: Record<string, unknown> | null;
+  after_metadata: Record<string, unknown> | null;
+  reason: string | null;
+  created_at: string;
+}
+
+function mapAuditRow(row: AuditRow): AuditEvent {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    userId: row.user_id,
+    eventType: row.event_type,
+    siteId: row.site_id ?? undefined,
+    assetId: row.asset_id ?? undefined,
+    entityType: row.entity_type,
+    entityId: row.entity_id ?? undefined,
+    beforeMetadata: row.before_metadata ?? undefined,
+    afterMetadata: row.after_metadata ?? undefined,
+    reason: row.reason ?? undefined,
+    createdAtUtc: row.created_at
+  };
+}
+
+interface EdgeSyncRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  gateway_id: string;
+  status: string;
+  buffered_readings: number;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+}
+
+function mapEdgeSyncRow(row: EdgeSyncRow): EdgeSyncInput & { id: string; tenantId: string; createdAtUtc: string } {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    gatewayId: row.gateway_id,
+    status: row.status as EdgeSyncMessage["status"],
+    bufferedReadings: row.buffered_readings,
+    startedAtUtc: row.started_at,
+    completedAtUtc: row.completed_at ?? undefined,
+    createdAtUtc: row.created_at
+  };
+}
+
+interface ReportExportRow {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  requested_by: string;
+  report_type: string;
+  parameters: Record<string, string | number | boolean>;
+  export_status: string;
+  created_at: string;
+}
+
+function mapReportExportRow(row: ReportExportRow): ReportExportInput & { id: string; status: string; requestedBy: string; createdAtUtc: string } {
+  return {
+    id: row.id,
+    siteId: row.site_id ?? undefined,
+    reportType: row.report_type as ReportExportInput["reportType"],
+    parameters: row.parameters,
+    status: row.export_status,
+    requestedBy: row.requested_by,
+    createdAtUtc: row.created_at
   };
 }
 
