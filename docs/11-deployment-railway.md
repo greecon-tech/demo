@@ -18,6 +18,7 @@ Same principle as the GCP path: the API service must **not** get a public domain
    - Settings → Build → Dockerfile Path: `infra/docker/web.Dockerfile`
    - Settings → Networking → **enable** a public domain (this is the pilot URL).
    - Variables: add `GREECON_API_URL` = `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:4000` — replace `api` with whatever you named the API service if you renamed it.
+   - Variables: add `GREECON_DEMO_ROLE` = `owner` so the deployed site can manage automation rules (see "Managing rules" below). There's still no real per-user login (see `docs/07-security-and-rbac.md`), so this grants owner-level access to anyone who reaches the URL — acceptable for a single-operator pilot, not for a public site.
 5. Both services redeploy automatically on every push to the connected branch from here on.
 
 ## Load the database schema (one time)
@@ -38,3 +39,7 @@ railway run --service api npm run db:migrate -w @greecon/api
 ## Getting the pilot URL
 
 Settings → Networking on the web service shows the generated `*.up.railway.app` domain (or attach a custom domain there, e.g. a `greecon.earth` subdomain).
+
+## Managing rules
+
+The Automation page's rule editor (create, approve, disable, delete) only works here — the static GitHub Pages demo has no server to save changes to. Rules persist in Postgres once `DATABASE_URL` is set and the migration above has run; without it, the API falls back to the same in-memory seed data as the static demo, and edits are lost on restart.

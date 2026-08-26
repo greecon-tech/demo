@@ -13,6 +13,10 @@ export class DatabaseService implements OnModuleDestroy {
     }
   }
 
+  isConfigured(): boolean {
+    return this.pool !== undefined;
+  }
+
   async query<T extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []): Promise<QueryResult<T>> {
     if (!this.pool) {
       throw new Error("DATABASE_URL is not configured.");

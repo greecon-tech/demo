@@ -1,19 +1,10 @@
 import { hasPermission } from "@greecon/shared";
 import { DataTable } from "../../components/DataTable";
 import { ManualOverridePanel } from "../../components/ManualOverridePanel";
-import { RuleActions } from "../../components/RuleActions";
-import { RuleForm } from "../../components/RuleForm";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { StatusBadge } from "../../components/StatusBadge";
 import { apiGet, DEMO_ROLE } from "../../lib/api";
-
-// This page has Server Actions that mutate data (rule create/approve/disable/delete) and
-// re-render it via revalidatePath — Next's static-optimization heuristics otherwise conflict
-// with that combined with the no-store fetches in apiGet, producing a DYNAMIC_SERVER_USAGE
-// error. Forcing fully dynamic rendering avoids the ambiguity. (The static export build never
-// sees this file — see apps/web/scripts/build-static.sh.)
-export const dynamic = "force-dynamic";
 
 interface Rule {
   id: string;
@@ -31,19 +22,14 @@ interface AuditEvent {
   reason?: string;
 }
 
-interface SiteOption {
-  id: string;
-  name: string;
-}
-
+// Read-only twin of page.tsx, used only for the static GitHub Pages export
+// (see apps/web/scripts/build-static.sh) — a static export has no server to send rule
+// mutations to, and the real page's RuleForm/RuleActions import Server Actions, which
+// Next.js's static export flatly refuses to build even when they're never rendered.
 export default async function AutomationPage() {
   const canManageRules = hasPermission(DEMO_ROLE, "automation:manage");
 
-  const [rules, auditEvents, sites] = await Promise.all([
-    apiGet<Rule[]>("/rules"),
-    apiGet<AuditEvent[]>("/audit", "auditor"),
-    apiGet<SiteOption[]>("/sites")
-  ]);
+  const [rules, auditEvents] = await Promise.all([apiGet<Rule[]>("/rules"), apiGet<AuditEvent[]>("/audit", "auditor")]);
   const history = auditEvents.filter((event) => event.eventType.startsWith("command.") || event.eventType.startsWith("manual_override."));
 
   return (
@@ -56,16 +42,17 @@ export default async function AutomationPage() {
             { key: "priority", label: "Priority" },
             { key: "executionMode", label: "Execution" },
             { key: "approvalState", label: "Approval", render: (row) => <StatusBadge status={row.approvalState} /> },
-            { key: "explanationTemplate", label: "Explanation" },
-            ...(canManageRules
-              ? [{ key: "id" as const, label: "Manage", render: (row: Rule) => <RuleActions ruleId={row.id} ruleName={row.name} approvalState={row.approvalState} /> }]
-              : [])
+            { key: "explanationTemplate", label: "Explanation" }
           ]}
         />
       </Section>
       {canManageRules ? (
         <Section title="Create Rule" aside={<span className="muted">Owner / Admin only</span>}>
-          <RuleForm sites={sites} />
+          <div className="panel">
+            <p className="muted">
+              Rule editing requires a live deployment (Railway or Google Cloud) — this build is a static snapshot with no server to save changes to. See docs/12-deployment-github-pages.md.
+            </p>
+          </div>
         </Section>
       ) : null}
       <div className="split">

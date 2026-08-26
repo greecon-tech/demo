@@ -31,6 +31,28 @@ export async function apiGet<T>(path: string, role: DemoRole = DEMO_ROLE): Promi
   return response.json() as Promise<T>;
 }
 
+/** Mutations only work against a live server (Railway/GCP) — the static GitHub Pages export
+ * has nothing to send them to, so callers must gate this behind NEXT_OUTPUT_EXPORT themselves. */
+export async function apiMutate<T>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, role: DemoRole = DEMO_ROLE): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-user-role": role,
+      ...(await authHeader())
+    },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Greecon API request failed: ${role} ${method} ${path} -> ${response.status} ${detail}`);
+  }
+
+  if (response.status === 204) return undefined as T;
+  return response.json() as Promise<T>;
+}
+
 async function authHeader(): Promise<Record<string, string>> {
   if (!process.env.K_SERVICE) {
     return {};
