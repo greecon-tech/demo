@@ -433,6 +433,18 @@ main {
   background: var(--pale-green-blue);
 }
 
+.site-map--field {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px) 0 0 / 12.5% 100%,
+    linear-gradient(0deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px) 0 0 / 100% 25%,
+    var(--pale-green-blue);
+}
+
+.site-map__caption {
+  font-size: 0.78rem;
+  margin: -8px 0 0;
+}
+
 .site-map__node {
   position: absolute;
   display: grid;

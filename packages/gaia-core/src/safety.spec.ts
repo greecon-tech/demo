@@ -102,6 +102,42 @@ describe("GAIA safety primitives", () => {
     expect(result.reasons.join(" ")).toContain("exceeds limit");
   });
 
+  it("allows a manual irrigation command with only a soil moisture reading and no pressure sensor", () => {
+    const irrigationCommand: CommandMessage = {
+      ...command,
+      target: { deviceId: "irrigation-1", pointId: "point-irrigation", canonicalName: "agri.irrigation.command" },
+      manualOverride: { durationMinutes: 30, expiresAtUtc: "2099-01-01T00:00:00.000Z" }
+    };
+
+    const result = evaluateCommandSafety(
+      context({
+        command: irrigationCommand,
+        // Irrigation zones have no water.pressure.bar sensor at all — this must not be required.
+        sensors: { "agri.soil.moisture.percent": { value: 22, unit: "%", quality: "OK", timestampUtc: "2026-04-29T09:59:00.000Z" } }
+      })
+    );
+
+    expect(result.allowed).toBe(true);
+  });
+
+  it("blocks a manual irrigation run that exceeds the maximum single-run duration", () => {
+    const irrigationCommand: CommandMessage = {
+      ...command,
+      target: { deviceId: "irrigation-1", pointId: "point-irrigation", canonicalName: "agri.irrigation.command" },
+      manualOverride: { durationMinutes: 200, expiresAtUtc: "2099-01-01T00:00:00.000Z" }
+    };
+
+    const result = evaluateCommandSafety(
+      context({
+        command: irrigationCommand,
+        sensors: { "agri.soil.moisture.percent": { value: 22, unit: "%", quality: "OK", timestampUtc: "2026-04-29T09:59:00.000Z" } }
+      })
+    );
+
+    expect(result.allowed).toBe(false);
+    expect(result.reasons.join(" ")).toContain("exceeds the maximum single run");
+  });
+
   it("derives irrigation and energy surplus states from normalized telemetry", () => {
     const states = deriveOperationalStates({
       ...healthySensors,

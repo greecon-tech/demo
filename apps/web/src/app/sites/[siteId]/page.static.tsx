@@ -1,17 +1,18 @@
+import { hasPermission } from "@greecon/shared";
 import { DataTable } from "../../../components/DataTable";
 import { MetricGrid } from "../../../components/MetricGrid";
 import { Section } from "../../../components/Section";
 import { SensorMap } from "../../../components/SensorMap";
 import { Shell } from "../../../components/Shell";
 import { StatusBadge } from "../../../components/StatusBadge";
-import { apiGet } from "../../../lib/api";
+import { apiGet, DEMO_ROLE } from "../../../lib/api";
 import { Metric } from "../../../lib/types";
 
 interface SiteDetail {
   site: { id: string; name: string; type: string; locationName: string; status: string; edgeStatus: string };
   assets: Array<{ id: string; name: string; type: string; status: string }>;
-  devices: Array<{ id: string; name: string; deviceType: string; protocol: string; health: string; lastSeenUtc?: string }>;
-  points: Array<{ id: string; deviceId: string; label: string; unit: string }>;
+  devices: Array<{ id: string; name: string; deviceType: string; protocol: string; health: string; lastSeenUtc?: string; positionX?: number; positionY?: number; placementNote?: string }>;
+  points: Array<{ id: string; deviceId: string; label: string; unit: string; canonicalName: string; capability: string }>;
   latestTelemetry: Array<{ pointId: string; canonicalName: string; value: number | boolean | string; unit: string; quality: string }>;
   rules: Array<{ id: string; name: string; priority: string; executionMode: string; approvalState: string }>;
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
@@ -31,6 +32,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
   const detail = await apiGet<SiteDetail>(`/sites/${siteId}`);
   const { site } = detail;
   const metrics = buildMetrics(detail);
+  const canControl = hasPermission(DEMO_ROLE, "command:create");
+  const hasControllableEquipment = detail.points.some((point) => point.capability === "write" || point.capability === "read_write");
 
   return (
     <Shell title={site.name} subtitle={`${site.type} · ${site.locationName}`}>
@@ -45,6 +48,15 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
       <Section title="Equipment">
         <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />
       </Section>
+      {canControl && hasControllableEquipment ? (
+        <Section title="Manual Control" aside={<span className="muted">Automatic (rules/AI) is the default mode</span>}>
+          <div className="panel">
+            <p className="muted">
+              Manual control requires a live deployment (Railway or Google Cloud) — this build is a static snapshot with no server to dispatch commands to. See docs/12-deployment-github-pages.md.
+            </p>
+          </div>
+        </Section>
+      ) : null}
       <Section title="Automation">
         <DataTable
           rows={detail.rules}

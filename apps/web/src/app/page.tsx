@@ -28,7 +28,15 @@ interface Overview {
   status: string;
   sites: OverviewSite[];
   summaries: {
-    energy: { solarPowerKw?: number; batterySocPercent?: number; surplusState: string };
+    energy: {
+      solarPowerKw?: number;
+      batterySocPercent?: number;
+      batteryPowerKw?: number;
+      consumptionKw?: number;
+      gridImportKw?: number;
+      gridExportKw?: number;
+      surplusState: string;
+    };
     water: { tankLevelPercent?: number; flowLpm?: number; pressureBar?: number };
     agriculture: { soilMoisturePercent?: number; temperatureC?: number; humidityPercent?: number };
     edge: { connectedSites: number; simulatedSites: number };
@@ -81,16 +89,38 @@ export default async function OverviewPage() {
   );
 }
 
+// Each energy metric is only added when the tenant's sites actually meter it — a fleet with no
+// battery simply omits the battery card rather than showing a placeholder, and a fleet with no
+// grid connection omits the grid cards. This is what makes the energy summary "customizable"
+// per deployment instead of assuming every site has the same equipment.
 function buildMetrics(overview: Overview): Metric[] {
   const { energy, water, agriculture, edge } = overview.summaries;
-  return [
-    { label: "Solar production", value: formatNumber(energy.solarPowerKw), unit: "kW", status: "OK", note: "Renewable generation available" },
-    { label: "Battery state", value: formatNumber(energy.batterySocPercent), unit: "%", status: "OK", note: `Surplus ${energy.surplusState.toLowerCase()}` },
+  const metrics: Metric[] = [];
+
+  if (energy.solarPowerKw !== undefined) {
+    metrics.push({ label: "Solar production", value: formatNumber(energy.solarPowerKw), unit: "kW", status: "OK", note: `Surplus ${energy.surplusState.toLowerCase()}` });
+  }
+  if (energy.batterySocPercent !== undefined) {
+    metrics.push({ label: "Battery state", value: formatNumber(energy.batterySocPercent), unit: "%", status: energy.batterySocPercent < 25 ? "Watch" : "OK", note: "State of charge" });
+  }
+  if (energy.consumptionKw !== undefined) {
+    metrics.push({ label: "Energy consumption", value: formatNumber(energy.consumptionKw), unit: "kW", status: "OK", note: "Site load, all sources" });
+  }
+  if (energy.gridImportKw !== undefined) {
+    metrics.push({ label: "Grid import", value: formatNumber(energy.gridImportKw), unit: "kW", status: "OK", note: "Drawn from the grid" });
+  }
+  if (energy.gridExportKw !== undefined) {
+    metrics.push({ label: "Grid export", value: formatNumber(energy.gridExportKw), unit: "kW", status: "OK", note: "Sent to the grid" });
+  }
+
+  metrics.push(
     { label: "Tank level", value: formatNumber(water.tankLevelPercent), unit: "%", status: water.tankLevelPercent !== undefined && water.tankLevelPercent < 35 ? "Watch" : "OK", note: "Refill planning threshold" },
     { label: "Line pressure", value: formatNumber(water.pressureBar), unit: "bar", status: "OK", note: "Within operating range" },
     { label: "Soil moisture", value: formatNumber(agriculture.soilMoisturePercent), unit: "%", status: agriculture.soilMoisturePercent !== undefined && agriculture.soilMoisturePercent < 28 ? "Watch" : "OK", note: "Irrigation rule simulated" },
     { label: "Edge connectivity", value: `${edge.connectedSites} / ${edge.connectedSites + edge.simulatedSites}`, unit: "sites", status: edge.simulatedSites > 0 ? "Watch" : "OK", note: edge.simulatedSites > 0 ? "One or more sites are simulated" : "All sites connected" }
-  ];
+  );
+
+  return metrics;
 }
 
 function formatNumber(value: number | undefined): string {

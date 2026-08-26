@@ -1,6 +1,6 @@
 import { hasPermission } from "@greecon/shared";
 import { DataTable } from "../../components/DataTable";
-import { ManualOverridePanel } from "../../components/ManualOverridePanel";
+import { ManualControlPanel, ManualControlTarget } from "../../components/ManualControlPanel";
 import { RuleActions } from "../../components/RuleActions";
 import { RuleForm } from "../../components/RuleForm";
 import { Section } from "../../components/Section";
@@ -36,15 +36,49 @@ interface SiteOption {
   name: string;
 }
 
+interface DeviceOption {
+  id: string;
+  name: string;
+  siteId: string;
+}
+
+interface PointOption {
+  id: string;
+  deviceId: string;
+  siteId: string;
+  label: string;
+  unit: string;
+  canonicalName: string;
+  capability: string;
+}
+
 export default async function AutomationPage() {
   const canManageRules = hasPermission(DEMO_ROLE, "automation:manage");
+  const canControl = hasPermission(DEMO_ROLE, "command:create");
 
-  const [rules, auditEvents, sites] = await Promise.all([
+  const [rules, auditEvents, sites, devices, points] = await Promise.all([
     apiGet<Rule[]>("/rules"),
     apiGet<AuditEvent[]>("/audit", "auditor"),
-    apiGet<SiteOption[]>("/sites")
+    apiGet<SiteOption[]>("/sites"),
+    apiGet<DeviceOption[]>("/devices"),
+    apiGet<PointOption[]>("/points")
   ]);
   const history = auditEvents.filter((event) => event.eventType.startsWith("command.") || event.eventType.startsWith("manual_override."));
+
+  const siteName = new Map(sites.map((site) => [site.id, site.name]));
+  const deviceName = new Map(devices.map((device) => [device.id, device.name]));
+  const controllableTargets: ManualControlTarget[] = points
+    .filter((point) => point.capability === "write" || point.capability === "read_write")
+    .map((point) => ({
+      pointId: point.id,
+      deviceId: point.deviceId,
+      deviceName: deviceName.get(point.deviceId) ?? point.deviceId,
+      siteId: point.siteId,
+      siteName: siteName.get(point.siteId) ?? point.siteId,
+      canonicalName: point.canonicalName,
+      label: point.label,
+      unit: point.unit
+    }));
 
   return (
     <Shell title="Automation" subtitle="Rules, simulations, command safety, and human-readable action history.">
@@ -80,8 +114,12 @@ export default async function AutomationPage() {
             ]}
           />
         </Section>
-        <Section title="Manual Override">
-          <ManualOverridePanel />
+        <Section title="Manual Control" aside={<span className="muted">Automatic (rules/AI) is the default mode</span>}>
+          {canControl ? (
+            <ManualControlPanel targets={controllableTargets} emptyMessage="No manually controllable equipment is configured yet." />
+          ) : (
+            <p className="muted">Your role does not have permission to dispatch manual commands.</p>
+          )}
         </Section>
       </div>
     </Shell>
