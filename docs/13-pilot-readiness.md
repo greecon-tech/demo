@@ -7,6 +7,27 @@ found — it is meant to stay current, not be a one-time snapshot.
 
 ## Fixed in this pass
 
+### Nothing bridged the edge MQTT broker to the cloud API
+
+**Gap:** `docs/04-edge-runtime.md` describes telemetry flowing over MQTT topics
+(`greecon/{tenantId}/{siteId}/telemetry/{deviceId}`), and `apps/edge-simulator` really does
+publish there — but nothing in the stack subscribed to that broker. The API only exposes
+`POST /telemetry/ingest` over HTTP. A gateway publishing telemetry on-site had no path to the
+dashboard at all; this was only found while preparing an actual industrial-PC deployment.
+
+**Fix:** added `apps/edge-agent`, a small bridge that subscribes to the site's telemetry topic on
+the local broker and forwards each message to `POST /telemetry/ingest`, buffering in memory and
+retrying if the API is briefly unreachable (same `OfflineBuffer` pattern the simulator already
+used for its own MQTT reconnects). Verified live end-to-end: Mosquitto + the simulator + the new
+agent + the real API against real Postgres, confirmed fresh readings landing in
+`telemetry_readings` on a ~5-second cadence. See `docs/14-edge-hardware-deployment.md` for the
+full install.
+
+**How to extend further:** the buffer is in-process memory only — a service restart during a long
+outage loses whatever hadn't flushed. If a pilot site has unreliable backhaul, the buffer should
+move to an on-disk queue (SQLite is the natural fit given nothing else on this box needs a real
+database).
+
 ### Energy metering was solar/battery-only
 
 **Gap:** `overview()` only ever reported `solarPowerKw`, `batterySocPercent`, and a derived
@@ -90,6 +111,35 @@ threaded through today) and add a check parallel to the pump's rest-time logic.
 
 ## Still open
 
+### No real field protocol drivers yet
+
+**Gap:** `apps/edge-simulator` publishes synthetic sine-wave readings. Nothing in the repo
+actually reads a Modbus, OPC-UA, or analog field device — the `protocol` field on `Device` models
+these as first-class concepts, but no driver implements any of them.
+
+**How to fix:** write a driver process (start with Modbus TCP/RTU — it's the most common protocol
+for pumps, VFDs, and level transmitters) that publishes `TelemetryMessage` JSON to
+`greecon/{tenantId}/{siteId}/telemetry/{deviceId}` on the on-site broker. `apps/edge-agent`
+(added this pass) already bridges whatever's on that topic to the cloud API — a real driver is a
+drop-in replacement for the simulator, no changes needed elsewhere.
+
+### The cloud API isn't reachable from a remote edge site
+
+**Gap:** the API is deliberately not exposed on the public internet (`docs/07-security-and-
+rbac.md`, `docs/11-deployment-railway.md`) — its RBAC trusts a self-asserted role header with no
+real per-request authentication, so making it publicly reachable would let anyone impersonate any
+role. That's the right call for the web app, but it means an edge box at an actual remote farm
+site has no public URL to send telemetry to.
+
+**How to fix, short-term:** a WireGuard/Tailscale tunnel from the edge box into the same private
+network as the API — no code changes, documented as the pilot-scale answer in
+`docs/14-edge-hardware-deployment.md`. **Longer-term, for a real fleet:** replace the shared
+role-header trust model for machine traffic specifically with a real device credential (a signed
+JWT or mTLS client cert per gateway, checked against a table of provisioned gateways) so the
+telemetry ingestion path can be exposed without inheriting the human-auth model's current
+weakness. That's a materially bigger change than the tunnel and should wait until there's more
+than a handful of pilot sites to justify it.
+
 ### Site/device/point provisioning has no CRUD
 
 **Gap:** Sites, assets, devices, and points are fixed, hardcoded seed arrays regardless of
@@ -150,3 +200,8 @@ irrigation command was blocked before the safety fix, and dispatches successfull
 static GitHub Pages export (`apps/web/scripts/build-static.sh`) was also rebuilt end-to-end to
 confirm the new Manual Control UI degrades to a clear "requires a live deployment" message rather
 than breaking the static build.
+
+The MQTT bridge (`apps/edge-agent`) was verified the same way: a real local Mosquitto broker, the
+existing simulator publishing to it, the new agent bridging to a real running API against real
+Postgres, and confirmed fresh readings (not stale ones) landing in `telemetry_readings` on the
+expected ~5-second cadence over several cycles.
