@@ -63,7 +63,7 @@ jobs:
               export NEXT_BASE_PATH="$GREECON_SITE_ROOT/$role"
             fi
             export GREECON_DEMO_ROLE="$role"
-            npm run build -w @greecon/web
+            apps/web/scripts/build-static.sh
             mkdir -p "$dest"
             cp -r apps/web/out/. "$dest/"
           done

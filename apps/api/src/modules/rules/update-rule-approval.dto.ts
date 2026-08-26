@@ -1,0 +1,10 @@
+import { IsIn, IsNotEmpty, IsString } from "class-validator";
+
+export class UpdateRuleApprovalDto {
+  @IsIn(["draft", "approved", "disabled"])
+  approvalState!: "draft" | "approved" | "disabled";
+
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}

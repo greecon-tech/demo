@@ -740,6 +740,55 @@ tbody tr:hover {
   gap: 12px;
 }
 
+.rule-form {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.rule-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.rule-form__section-label {
+  margin: 0;
+  color: var(--faint);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rule-form__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-actions button {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+}
+
+.rule-actions__error {
+  margin: 0;
+  color: var(--critical-fg);
+  font-size: 0.8rem;
+}
+
 .dialog {
   position: fixed;
   inset: 0;

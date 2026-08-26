@@ -17,12 +17,15 @@ interface SiteDetail {
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
 }
 
-// No generateStaticParams here — this file is only ever used for the SSR build (Railway, GCP),
-// which renders each site on request. The static GitHub Pages export uses page.static.tsx
-// instead (see apps/web/scripts/build-static.sh), which needs generateStaticParams to
-// pre-render every site at build time; on this SSR page, merely having that function present —
-// even gated to return [] — was enough to make Next.js treat the route as a static-generation
-// candidate and throw DYNAMIC_SERVER_USAGE on the no-store fetch below.
+// Static-export twin of page.tsx (see apps/web/scripts/build-static.sh). Only this build needs
+// every site pre-rendered up front, since a static export has no live API to query at request
+// time; the real SSR page renders on request and deliberately has no generateStaticParams (see
+// its own comment for why that combination broke it).
+export async function generateStaticParams() {
+  const sites = await apiGet<Array<{ id: string }>>("/sites");
+  return sites.map((site) => ({ siteId: site.id }));
+}
+
 export default async function SiteDetailPage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params;
   const detail = await apiGet<SiteDetail>(`/sites/${siteId}`);

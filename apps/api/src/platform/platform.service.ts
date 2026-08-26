@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import {
   AlertMessage,
@@ -11,6 +11,10 @@ import {
   Device,
   EdgeSyncMessage,
   Point,
+  RuleAction,
+  RuleCondition,
+  RuleExecutionMode,
+  RulePriorityLevel,
   Site,
   TelemetryMessage,
   TelemetryReading,
@@ -30,6 +34,22 @@ import {
   type StateSnapshot
 } from "@greecon/gaia-core";
 import { Principal } from "../common/principal";
+import { DatabaseService } from "../database/database.service";
+
+export interface CreateRuleInput {
+  siteId?: string;
+  name: string;
+  priority: RulePriorityLevel;
+  triggerType: string;
+  conditions: RuleCondition[];
+  constraints: RuleCondition[];
+  actions: RuleAction[];
+  executionMode: RuleExecutionMode;
+  explanationTemplate: string;
+  rollbackBehavior: string;
+}
+
+export type UpdateRuleInput = Partial<Omit<CreateRuleInput, "siteId">>;
 
 export interface CommandRecord {
   id: string;
@@ -132,7 +152,23 @@ export interface EdgeSyncInput {
 }
 
 @Injectable()
-export class PlatformService {
+export class PlatformService implements OnModuleInit {
+  constructor(private readonly db: DatabaseService) {}
+
+  async onModuleInit(): Promise<void> {
+    // Rules are the one entity an admin can create/edit for a real pilot, so they're the one
+    // domain wired to Postgres — everything else here stays in-memory demo data (see
+    // docs/00-platform-vision.md's MVP boundary). When no DATABASE_URL is set (the static
+    // GitHub Pages demo, or local dev without a database), the hardcoded seed rules below apply
+    // instead, exactly as before.
+    if (!this.db.isConfigured()) return;
+
+    const result = await this.db.query<RuleRow>("SELECT * FROM rules ORDER BY created_at ASC");
+    if (result.rows.length > 0) {
+      this.rules = result.rows.map((row) => mapRuleRow(row));
+    }
+  }
+
   private readonly tenants: Tenant[] = [
     { id: DEMO_TENANT_ID, name: "Greecon Demo", domain: "demo.greecon.earth", status: "active" }
   ];
@@ -328,7 +364,7 @@ export class PlatformService {
     state("agri.irrigation_required", true, "watch", "22222222-2222-4222-8222-222222222201", "33333333-3333-4333-8333-333333333305", "Soil moisture is below the irrigation threshold.")
   ];
 
-  private readonly rules: AutomationRule[] = demoRules();
+  private rules: AutomationRule[] = demoRules();
   private readonly commands: CommandRecord[] = [];
   private readonly reportExports: Array<ReportExportInput & { id: string; status: string; requestedBy: string; createdAtUtc: string }> = [];
   private readonly edgeSyncBatches: Array<EdgeSyncInput & { id: string; tenantId: string; createdAtUtc: string }> = [];
@@ -530,6 +566,190 @@ export class PlatformService {
     const sensors = this.sensorSnapshot(principal.tenantId, siteId);
     const states = this.stateSnapshot(principal.tenantId, siteId);
     return this.listRules(principal, siteId).map((rule) => simulateRule(rule, sensors, states));
+  }
+
+  async createRule(input: CreateRuleInput, principal: Principal): Promise<AutomationRule> {
+    if (!hasPermission(principal.role, "automation:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    if (input.siteId) this.requireSite(input.siteId, principal.tenantId);
+
+    const rule: AutomationRule = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      name: input.name,
+      priority: input.priority,
+      triggerType: input.triggerType as AutomationRule["triggerType"],
+      conditions: input.conditions,
+      constraints: input.constraints,
+      actions: input.actions,
+      executionMode: input.executionMode,
+      explanationTemplate: input.explanationTemplate,
+      rollbackBehavior: input.rollbackBehavior,
+      enabled: false,
+      approvalState: "draft",
+      version: 1,
+      createdBy: principal.userId,
+      updatedBy: principal.userId
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO rules (id, tenant_id, site_id, name, priority, trigger_type, conditions, constraints, actions, execution_mode, explanation_template, rollback_behavior, enabled, approval_state, version, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+        [
+          rule.id,
+          rule.tenantId,
+          rule.siteId ?? null,
+          rule.name,
+          rule.priority,
+          rule.triggerType,
+          JSON.stringify(rule.conditions),
+          JSON.stringify(rule.constraints),
+          JSON.stringify(rule.actions),
+          rule.executionMode,
+          rule.explanationTemplate,
+          rule.rollbackBehavior,
+          rule.enabled,
+          rule.approvalState,
+          rule.version,
+          rule.createdBy,
+          rule.updatedBy
+        ]
+      );
+    }
+
+    this.rules.push(rule);
+    this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "rule.created",
+      siteId: rule.siteId,
+      entityType: "rule",
+      entityId: rule.id,
+      afterMetadata: { name: rule.name, priority: rule.priority },
+      reason: `Rule "${rule.name}" created as draft.`
+    });
+
+    return rule;
+  }
+
+  async updateRule(ruleId: string, input: UpdateRuleInput, principal: Principal): Promise<AutomationRule> {
+    if (!hasPermission(principal.role, "automation:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const rule = this.requireRule(ruleId, principal.tenantId);
+    const before = { ...rule };
+    // class-transformer initializes every declared (even optional) UpdateRuleDto field as an
+    // own property, so an omitted field arrives here as `undefined` rather than absent —
+    // Object.assign would otherwise overwrite it and blank out that column.
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(rule, patch, {
+      version: rule.version + 1,
+      updatedBy: principal.userId
+    });
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `UPDATE rules SET name=$1, priority=$2, trigger_type=$3, conditions=$4, constraints=$5, actions=$6, execution_mode=$7, explanation_template=$8, rollback_behavior=$9, enabled=$10, approval_state=$11, version=$12, updated_by=$13, updated_at=now()
+         WHERE id=$14 AND tenant_id=$15`,
+        [
+          rule.name,
+          rule.priority,
+          rule.triggerType,
+          JSON.stringify(rule.conditions),
+          JSON.stringify(rule.constraints),
+          JSON.stringify(rule.actions),
+          rule.executionMode,
+          rule.explanationTemplate,
+          rule.rollbackBehavior,
+          rule.enabled,
+          rule.approvalState,
+          rule.version,
+          rule.updatedBy,
+          rule.id,
+          principal.tenantId
+        ]
+      );
+    }
+
+    this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "rule.updated",
+      siteId: rule.siteId,
+      entityType: "rule",
+      entityId: rule.id,
+      beforeMetadata: { name: before.name, conditions: before.conditions, actions: before.actions },
+      afterMetadata: { name: rule.name, conditions: rule.conditions, actions: rule.actions },
+      reason: `Rule "${rule.name}" updated (v${rule.version}).`
+    });
+
+    return rule;
+  }
+
+  async setRuleApprovalState(ruleId: string, approvalState: AutomationRule["approvalState"], reason: string, principal: Principal): Promise<AutomationRule> {
+    if (!hasPermission(principal.role, "automation:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const rule = this.requireRule(ruleId, principal.tenantId);
+    const previousState = rule.approvalState;
+    rule.approvalState = approvalState;
+    rule.enabled = approvalState === "approved";
+    rule.updatedBy = principal.userId;
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE rules SET approval_state=$1, enabled=$2, updated_by=$3, updated_at=now() WHERE id=$4 AND tenant_id=$5`, [
+        rule.approvalState,
+        rule.enabled,
+        principal.userId,
+        rule.id,
+        principal.tenantId
+      ]);
+    }
+
+    this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: approvalState === "approved" ? "rule.approved" : approvalState === "disabled" ? "rule.disabled" : "rule.reverted_to_draft",
+      siteId: rule.siteId,
+      entityType: "rule",
+      entityId: rule.id,
+      beforeMetadata: { approvalState: previousState },
+      afterMetadata: { approvalState },
+      reason
+    });
+
+    return rule;
+  }
+
+  async deleteRule(ruleId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "automation:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const rule = this.requireRule(ruleId, principal.tenantId);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`DELETE FROM rules WHERE id=$1 AND tenant_id=$2`, [rule.id, principal.tenantId]);
+    }
+
+    this.rules = this.rules.filter((candidate) => candidate.id !== rule.id);
+    this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "rule.deleted",
+      siteId: rule.siteId,
+      entityType: "rule",
+      entityId: rule.id,
+      beforeMetadata: { name: rule.name },
+      reason: `Rule "${rule.name}" deleted.`
+    });
+
+    return { deleted: true };
   }
 
   createCommand(input: CreateCommandInput, principal: Principal): CommandRecord {
@@ -821,6 +1041,13 @@ export class PlatformService {
     return point;
   }
 
+  private requireRule(ruleId: string, tenantId: string): AutomationRule {
+    const rule = this.rules.find((candidate) => candidate.id === ruleId);
+    if (!rule) throw new NotFoundException("Rule not found.");
+    if (rule.tenantId !== tenantId) throw new ForbiddenException("Rule is outside tenant scope.");
+    return rule;
+  }
+
   private latestReadings(readings: TelemetryReading[]): TelemetryReading[] {
     const latest = new Map<string, TelemetryReading>();
     for (const item of readings) {
@@ -892,6 +1119,48 @@ export class PlatformService {
     this.auditEvents.unshift(auditEvent);
     return auditEvent;
   }
+}
+
+interface RuleRow {
+  id: string;
+  tenant_id: string;
+  site_id: string | null;
+  name: string;
+  priority: string;
+  trigger_type: string;
+  conditions: RuleCondition[];
+  constraints: RuleCondition[];
+  actions: RuleAction[];
+  execution_mode: string;
+  explanation_template: string;
+  rollback_behavior: string;
+  enabled: boolean;
+  approval_state: string;
+  version: number;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+function mapRuleRow(row: RuleRow): AutomationRule {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id ?? undefined,
+    name: row.name,
+    priority: row.priority as RulePriorityLevel,
+    triggerType: row.trigger_type as AutomationRule["triggerType"],
+    conditions: row.conditions,
+    constraints: row.constraints,
+    actions: row.actions,
+    executionMode: row.execution_mode as RuleExecutionMode,
+    explanationTemplate: row.explanation_template,
+    rollbackBehavior: row.rollback_behavior,
+    enabled: row.enabled,
+    approvalState: row.approval_state as AutomationRule["approvalState"],
+    version: row.version,
+    createdBy: row.created_by ?? "",
+    updatedBy: row.updated_by ?? ""
+  };
 }
 
 function nowIso(): string {
