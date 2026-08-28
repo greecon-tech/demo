@@ -219,6 +219,22 @@ export class PlatformService implements OnModuleInit {
       name: "Demo Auditor",
       role: "auditor",
       status: "active"
+    },
+    {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
+      tenantId: DEMO_TENANT_ID,
+      email: "admin@greecon.earth",
+      name: "Demo Admin",
+      role: "admin",
+      status: "active"
+    },
+    {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5",
+      tenantId: DEMO_TENANT_ID,
+      email: "viewer@greecon.earth",
+      name: "Demo Viewer",
+      role: "viewer",
+      status: "active"
     }
   ];
 

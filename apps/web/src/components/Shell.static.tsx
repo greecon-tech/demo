@@ -2,20 +2,19 @@ import Link from "next/link";
 import { ReactNode } from "react";
 import { GREECON_COMPANY, GREECON_DOMAIN, userRoles } from "@greecon/shared";
 import { DEMO_ROLE } from "../lib/api";
-import { logoutAction } from "../app/login/actions";
-import { getSession } from "../lib/session";
 import { Nav } from "./Nav";
 
-export async function Shell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle?: string }) {
+// Static-export twin of Shell.tsx (see apps/web/scripts/build-static.sh). The live Shell reads a
+// real session (login, logout, the actual signed-in user's name) via lib/session.ts, which
+// imports a Server Action — and Shell is used by literally every page, so that import alone
+// would break the entire static export, not just one route. This twin has no login concept at
+// all: each of the five static builds already "is" its DEMO_ROLE by construction.
+export function Shell({ children, title, subtitle }: { children: ReactNode; title: string; subtitle?: string }) {
   // Set only by the multi-role GitHub Pages build (docs/12-deployment-github-pages.md), which
   // publishes one static snapshot per role under sibling paths — a normal SSR deployment has a
   // single live role and no sibling builds to switch to, so the menu stays hidden there.
   const siteRoot = process.env.GREECON_SITE_ROOT;
-  // The static export never has a session (see lib/session.ts); the live deployment always does,
-  // since middleware.ts already redirected anyone without one to /login before this rendered.
-  const session = await getSession();
-  const role = session?.user.role ?? DEMO_ROLE;
-  const roleLabel = titleCase(role);
+  const roleLabel = titleCase(DEMO_ROLE);
 
   return (
     <div className="app-shell">
@@ -24,7 +23,7 @@ export async function Shell({ children, title, subtitle }: { children: ReactNode
           <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="" width="22" height="31" />
           <span>Greecon</span>
         </Link>
-        <Nav role={role} />
+        <Nav role={DEMO_ROLE} />
         <div className="sidebar-foot">
           <p>{GREECON_COMPANY}</p>
           <span>{GREECON_DOMAIN}</span>
@@ -58,16 +57,9 @@ export async function Shell({ children, title, subtitle }: { children: ReactNode
           ) : (
             <div className="access-chip">
               <div>
-                <span>{session ? session.user.name : "Secure access"}</span>
+                <span>Secure access</span>
                 <strong>{roleLabel}</strong>
               </div>
-              {session ? (
-                <form action={logoutAction}>
-                  <button type="submit" className="button-ghost">
-                    Log out
-                  </button>
-                </form>
-              ) : null}
             </div>
           )}
         </header>

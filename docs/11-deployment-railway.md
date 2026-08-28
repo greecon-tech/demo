@@ -14,12 +14,19 @@ Same principle as the GCP path: the API service must **not** get a public domain
    - Settings → Build → Dockerfile Path: `infra/docker/api.Dockerfile`
    - Settings → Networking → do **not** enable a public domain.
    - Variables: add `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (Railway's variable-reference syntax — type it literally, it resolves the other service's value).
+   - Variables: add `JWT_SECRET` = a real random secret (e.g. `openssl rand -base64 32`) — this signs and verifies login sessions (`docs/07-security-and-rbac.md`). Do not reuse the `.env.example` placeholder.
 4. Add a second service for the **web app**: **+ New → GitHub Repo**, same repo/branch.
    - Settings → Build → Dockerfile Path: `infra/docker/web.Dockerfile`
    - Settings → Networking → **enable** a public domain (this is the pilot URL).
    - Variables: add `GREECON_API_URL` = `http://${{api.RAILWAY_PRIVATE_DOMAIN}}:4000` — replace `api` with whatever you named the API service if you renamed it.
-   - Variables: add `GREECON_DEMO_ROLE` = `owner` so the deployed site can manage automation rules (see "Managing rules" below). There's still no real per-user login (see `docs/07-security-and-rbac.md`), so this grants owner-level access to anyone who reaches the URL — acceptable for a single-operator pilot, not for a public site.
 5. Both services redeploy automatically on every push to the connected branch from here on.
+
+There is now real per-user login (`docs/07-security-and-rbac.md`) — visitors land on `/login` and
+need a real account to get in. `GREECON_DEMO_ROLE` is no longer needed on this deployment (it only
+still matters for the static GitHub Pages export, which has no login at all). Create real accounts
+by inserting into `users`/`memberships` with a bcrypt-hashed `password_hash`, the same way
+`003_auth.sql` seeds the demo ones — there is no admin UI for this yet
+(`docs/15-master-roadmap.md`, Phase 0).
 
 ## Load the database schema (one time)
 
@@ -35,6 +42,13 @@ railway run --service api npm run db:migrate -w @greecon/api
 ```
 
 `railway run` injects that service's real environment (including `DATABASE_URL`) into the command without ever exposing the database publicly.
+
+**Before this touches real data:** `002_seed_demo.sql` and `003_auth.sql` are demo fixtures that
+ship in this public repo, including a known shared password for every seeded account. Running
+`db:migrate` on a pilot deployment creates those same demo accounts with that same password.
+Either change every seeded account's `password_hash` to a freshly bcrypt-hashed real password
+immediately after migrating, or don't run `003_auth.sql` at all and insert real accounts instead —
+do not leave the shipped demo credentials live on anything reachable by a real user.
 
 ## Getting the pilot URL
 

@@ -1,3 +1,5 @@
+import { LoginForm } from "../../components/LoginForm";
+
 export default function LoginPage() {
   return (
     <main className="login-page">
@@ -8,17 +10,7 @@ export default function LoginPage() {
           <h1>Greecon Platform</h1>
           <p className="muted">Operational access for authorized users of Greecon sites and infrastructure.</p>
         </div>
-        <form>
-          <label>
-            Email
-            <input type="email" placeholder="name@greecon.earth" />
-          </label>
-          <label>
-            Password
-            <input type="password" placeholder="Password" />
-          </label>
-          <button type="button">Continue</button>
-        </form>
+        <LoginForm />
       </section>
     </main>
   );

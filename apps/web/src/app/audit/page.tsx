@@ -1,7 +1,9 @@
 import { DataTable } from "../../components/DataTable";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
-import { apiGet } from "../../lib/api";
+import { requirePermission } from "../../lib/access";
+import { apiGet, DEMO_ROLE } from "../../lib/api";
+import { getSession } from "../../lib/session";
 
 interface AuditEvent {
   id: string;
@@ -13,7 +15,11 @@ interface AuditEvent {
 }
 
 export default async function AuditPage() {
-  const auditEvents = await apiGet<AuditEvent[]>("/audit", "auditor");
+  const session = await getSession();
+  const role = session?.user.role ?? DEMO_ROLE;
+  requirePermission(role, "audit:read");
+
+  const auditEvents = await apiGet<AuditEvent[]>("/audit");
 
   return (
     <Shell title="Audit" subtitle="Access, commands, automation, rule approvals, and operational evidence.">
