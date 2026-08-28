@@ -19,6 +19,13 @@ const OTHER_TENANT: Principal = {
   email: "intruder@example.com"
 };
 
+const VIEWER: Principal = {
+  tenantId: DEMO_TENANT_ID,
+  userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5",
+  role: "viewer",
+  email: "viewer@greecon.earth"
+};
+
 const SITE_ID = "22222222-2222-4222-8222-222222222202";
 const PUMP_DEVICE_ID = "44444444-4444-4444-8444-444444444404";
 const PUMP_POINT_ID = "55555555-5555-4555-8555-555555555509";
@@ -213,6 +220,88 @@ describe("PlatformService", () => {
 
       expect(acknowledged.dispatchStatus).toBe("acknowledged");
       expect(acknowledged.result).toBe("Pump stopped.");
+    });
+  });
+
+  describe("site/asset/device/point provisioning", () => {
+    it("blocks a viewer from creating a site", async () => {
+      await expect(
+        platform.createSite({ name: "New Site", type: "farm", locationName: "Test" }, VIEWER)
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("creates a site, then an asset, device, and point on it, and reads them back consistently", async () => {
+      const site = await platform.createSite({ name: "Provisioning Test Site", type: "farm", locationName: "Test Field" }, OWNER);
+      expect(platform.listSites(OWNER).some((candidate) => candidate.id === site.id)).toBe(true);
+
+      const asset = await platform.createAsset({ siteId: site.id, name: "Test Pump Station", type: "PumpStation" }, OWNER);
+      expect(asset.siteId).toBe(site.id);
+
+      const device = await platform.createDevice(
+        {
+          siteId: site.id,
+          assetId: asset.id,
+          name: "Test Pump PLC",
+          deviceType: "plc",
+          protocol: "modbus",
+          driverType: "test-driver",
+          positionX: 40,
+          positionY: 60,
+          placementNote: "Test placement"
+        },
+        OWNER
+      );
+      expect(device.siteId).toBe(site.id);
+      expect(device.positionX).toBe(40);
+
+      const point = await platform.createPoint(
+        {
+          siteId: site.id,
+          assetId: asset.id,
+          deviceId: device.id,
+          canonicalName: "water.pump.command",
+          label: "Test pump command",
+          unit: "state",
+          capability: "write"
+        },
+        OWNER
+      );
+      expect(point.deviceId).toBe(device.id);
+
+      const detail = platform.siteDetail(site.id, OWNER);
+      expect(detail.assets.map((candidate) => candidate.id)).toContain(asset.id);
+      expect(detail.devices.map((candidate) => candidate.id)).toContain(device.id);
+      expect(detail.points.map((candidate) => candidate.id)).toContain(point.id);
+
+      const updatedDevice = await platform.updateDevice(device.id, { health: "Watch", positionX: 55 }, OWNER);
+      expect(updatedDevice.health).toBe("Watch");
+      expect(updatedDevice.positionX).toBe(55);
+      expect(updatedDevice.positionY).toBe(60);
+
+      await platform.deletePoint(point.id, OWNER);
+      expect(platform.listPoints(OWNER, device.id)).toHaveLength(0);
+
+      await platform.deleteDevice(device.id, OWNER);
+      expect(platform.listDevices(OWNER, site.id)).toHaveLength(0);
+
+      await platform.deleteAsset(asset.id, OWNER);
+      expect(platform.listAssets(OWNER, site.id)).toHaveLength(0);
+
+      await platform.deleteSite(site.id, OWNER);
+      expect(platform.listSites(OWNER).some((candidate) => candidate.id === site.id)).toBe(false);
+    });
+
+    it("refuses to delete a site that still has a registered device", async () => {
+      await expect(platform.deleteSite(SITE_ID, OWNER)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("blocks creating a device on a site that belongs to a different tenant", async () => {
+      await expect(
+        platform.createDevice(
+          { siteId: SITE_ID, name: "Cross-tenant device", deviceType: "plc", protocol: "modbus", driverType: "test" },
+          OTHER_TENANT
+        )
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

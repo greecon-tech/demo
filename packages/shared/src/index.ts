@@ -214,6 +214,9 @@ export interface Asset {
   status: StatusLabel;
 }
 
+export const deviceProtocols = ["modbus", "opc_ua", "vendor_api", "analog", "simulated"] as const;
+export type DeviceProtocol = (typeof deviceProtocols)[number];
+
 export interface Device {
   id: string;
   tenantId: string;
@@ -222,7 +225,7 @@ export interface Device {
   gatewayId?: string;
   name: string;
   deviceType: string;
-  protocol: "modbus" | "opc_ua" | "vendor_api" | "analog" | "simulated";
+  protocol: DeviceProtocol;
   driverType: string;
   health: StatusLabel;
   lastSeenUtc?: string;
@@ -237,6 +240,9 @@ export interface Device {
   placementNote?: string;
 }
 
+export const pointCapabilities = ["read", "write", "read_write"] as const;
+export type PointCapability = (typeof pointCapabilities)[number];
+
 export interface Point {
   id: string;
   tenantId: string;
@@ -247,7 +253,7 @@ export interface Point {
   label: string;
   unit: string;
   quality: QualityFlag;
-  capability: "read" | "write" | "read_write";
+  capability: PointCapability;
   thresholdConfig?: Record<string, number>;
   metadata?: Record<string, string | number | boolean>;
 }
