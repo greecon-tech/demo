@@ -801,6 +801,12 @@ tbody tr:hover {
   font-size: 0.8rem;
 }
 
+.login-error {
+  margin: 0;
+  color: var(--critical-fg);
+  font-size: 0.85rem;
+}
+
 .dialog {
   position: fixed;
   inset: 0;

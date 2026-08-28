@@ -2,7 +2,9 @@ import { GREECON_COMPANY, GREECON_DOMAIN } from "@greecon/shared";
 import { DataTable } from "../../components/DataTable";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
-import { apiGet } from "../../lib/api";
+import { requirePermission } from "../../lib/access";
+import { apiGet, DEMO_ROLE } from "../../lib/api";
+import { getSession } from "../../lib/session";
 
 interface Site {
   id: string;
@@ -29,7 +31,11 @@ const roles = [
 ] as const;
 
 export default async function AdminPage() {
-  const [sites, users] = await Promise.all([apiGet<Site[]>("/sites", "owner"), apiGet<User[]>("/users", "owner")]);
+  const session = await getSession();
+  const role = session?.user.role ?? DEMO_ROLE;
+  requirePermission(role, "user:manage");
+
+  const [sites, users] = await Promise.all([apiGet<Site[]>("/sites"), apiGet<User[]>("/users")]);
 
   return (
     <Shell title="Admin" subtitle="Tenant, users, roles, devices, retention, and security settings.">

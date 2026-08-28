@@ -7,6 +7,42 @@ found — it is meant to stay current, not be a one-time snapshot.
 
 ## Fixed in this pass
 
+### There was no real authentication at all
+
+**Gap:** `apps/web/src/app/login/page.tsx` was a static form with no submit handler at all — the
+"Continue" button did nothing. Every request's identity came from a self-asserted `x-user-role`
+header, or a single build-time `GREECON_DEMO_ROLE` for the whole deployment. There was no concept
+of "this specific person did this specific thing," even though every command, rule change, and
+alert acknowledgement already records a `requestedBy`/`userId` — from an identity no one had
+actually logged in as.
+
+**Fix:** real login (`docs/07-security-and-rbac.md` has the full design). `POST /auth/login`
+checks a bcrypt password hash and issues a signed JWT; the web app stores it in an httpOnly
+session cookie and forwards it as `x-greecon-session` on every API call; the API's
+`PrincipalGuard` verifies it on every single request and only falls back to the old header-based
+identity when no token is presented at all (the static export, which has no server to log in
+against, and local dev). A bad or expired token is rejected outright, never silently downgraded to
+the header path. Middleware redirects an unauthenticated visitor to `/login`. Five demo
+accounts — one per role — were seeded (`003_auth.sql`) so every role can actually log in and be
+verified, not just asserted.
+
+This also surfaced a real bug: several pages (`automation`, `alerts`, `admin`, `audit`, `reports`)
+used to pin their API calls to a specific role string (e.g. always fetch `/audit` "as auditor")
+purely as a workaround for the old single-role-per-build model. Under real per-user sessions that
+workaround is actively wrong — a real operator's session can't be waved through as "auditor" for
+one call. Fixed by using the real session's role everywhere live, gating the few sections that
+need a permission the page itself doesn't require (Automation History needs `audit:read`,
+Alerts' Incidents needs `incident:manage`) with the same `hasPermission` pattern already used for
+Manual Control, and adding actual server-side enforcement (`lib/access.ts`'s `requirePermission`,
+a 404 rather than just hiding the nav link) to the four pages gated by a page-level permission —
+previously a role that couldn't see a link in the sidebar could still reach that page's data by
+typing the URL directly.
+
+**How to extend further:** there is no password reset flow and no rate limiting on
+`POST /auth/login` yet (`docs/15-master-roadmap.md`, Phase 0) — both are real gaps for anything
+beyond a demo/pilot. Every seeded demo account also shares one password; see the warning in
+`docs/11-deployment-railway.md` about changing this before any real deployment.
+
 ### Nothing bridged the edge MQTT broker to the cloud API
 
 **Gap:** `docs/04-edge-runtime.md` describes telemetry flowing over MQTT topics
@@ -205,3 +241,13 @@ The MQTT bridge (`apps/edge-agent`) was verified the same way: a real local Mosq
 existing simulator publishing to it, the new agent bridging to a real running API against real
 Postgres, and confirmed fresh readings (not stale ones) landing in `telemetry_readings` on the
 expected ~5-second cadence over several cycles.
+
+Real authentication was verified with an actual headless browser (Playwright) driving the live
+SSR app end-to-end: unauthenticated visit redirects to `/login`; a wrong password shows a real
+error and does not log in; a correct password logs in, sets the session, and shows the real
+logged-in user's name and role (not a hardcoded demo label); the Overview page renders real data
+through the new session's bearer token; logging out clears the session and revisiting `/` redirects
+back to `/login`. A second run confirmed a `viewer` account sees no Admin/Audit nav links and gets
+a real 404 navigating to `/admin` directly by URL, not just a hidden link. The static export was
+rebuilt end-to-end afterward to confirm the login/session code paths (which import a Server
+Action, like the rule-management and manual-control work before it) don't break that build.

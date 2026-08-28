@@ -14,7 +14,9 @@ Mosquitto, the edge simulator, and Grafana are local-development-only for now (s
 
 ## Network boundary
 
-The API Cloud Run service is **private** — only the web service's own runtime identity may invoke it (`roles/run.invoker`, scoped to that one service account). The web service is the only public endpoint. This matters because the API's RBAC is driven by a self-asserted `x-user-role` header (see `docs/07-security-and-rbac.md`); if the API were reachable from the open internet, anyone could set that header directly and bypass access control. Since the web app's Next.js server components are the only caller, and they attach a Google-signed Cloud Run identity token to every request (`apps/web/src/lib/api.ts`), a pilot visitor never gets the chance to set that header themselves.
+The API Cloud Run service is **private** — only the web service's own runtime identity may invoke it (`roles/run.invoker`, scoped to that one service account). The web service is the only public endpoint. This still matters even now that real per-user login exists (`docs/07-security-and-rbac.md`): the login-less header fallback (`x-user-role`) only stays safe because a caller from the open internet can never reach the API to use it in the first place. Since the web app's Next.js server components are the only caller, and they attach a Google-signed Cloud Run identity token to every request (`apps/web/src/lib/api.ts`) alongside the real user's session token, a pilot visitor never gets the chance to set that header themselves.
+
+Set `JWT_SECRET` as a Secret Manager entry alongside the database URL — never as a plain Cloud Run environment variable — since it signs every login session.
 
 ## One-time setup
 

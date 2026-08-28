@@ -1,10 +1,16 @@
 import { DataTable } from "../../components/DataTable";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
-import { apiGet } from "../../lib/api";
+import { requirePermission } from "../../lib/access";
+import { apiGet, DEMO_ROLE } from "../../lib/api";
+import { getSession } from "../../lib/session";
 
 export default async function ReportsPage() {
-  const templates = await apiGet<string[]>("/reports/templates", "auditor");
+  const session = await getSession();
+  const role = session?.user.role ?? DEMO_ROLE;
+  requirePermission(role, "report:export");
+
+  const templates = await apiGet<string[]>("/reports/templates");
   const rows = templates.map((name) => ({ name, status: "Ready" }));
 
   return (
