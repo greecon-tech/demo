@@ -7,6 +7,47 @@ found — it is meant to stay current, not be a one-time snapshot.
 
 ## Fixed in this pass
 
+### Site/device/point provisioning had no CRUD
+
+**Gap:** Sites, assets, devices, and points were fixed, hardcoded seed arrays regardless of
+whether a database was configured — there were no create/update/delete endpoints for any of them.
+Rules, telemetry, commands, alerts, incidents, audit events, edge-sync batches, and report exports
+were all fully persisted (see `docs/11-deployment-railway.md`); this layer wasn't. Onboarding a
+real pilot site meant editing seed data in source, not an actual provisioning flow.
+
+**Fix:** full `POST/PATCH/DELETE` for `sites`, `assets`, `devices`, and `points`, following the
+exact pattern already proven for rules — DTOs with `class-validator` decorators,
+`site:manage`/`asset:manage`/`device:manage` permission guards (points fall under `device:manage`;
+there's no separate `point:manage` permission), dual-write to the in-memory arrays and (when
+`DatabaseService.isConfigured()`) to Postgres, and hydration in `onModuleInit()` — all four now
+survive a restart exactly like rules do. Deleting a site is blocked outright while it still has
+any registered devices, since the schema cascades a site delete through assets, devices, points,
+and telemetry history — that much silent data loss as a side effect of one call is worth refusing
+rather than just documenting. Device create/update also accept the `positionX`/`positionY`/
+`placementNote` fields added for the sensor map (see that entry below), storing them in the
+existing `devices.metadata` jsonb column — closing the "positions don't survive a restart" gap
+that fix had explicitly flagged as a follow-up.
+
+**Found and fixed a real bug while verifying this against real Postgres** (not caught by the unit
+tests, which run against an unconfigured database and never touch a real foreign key):
+`deleteSite` recorded its own `site.deleted` audit event *after* issuing `DELETE FROM sites` —
+but `audit_events.site_id` has a foreign key to `sites`, so inserting an audit row that references
+the very site that had just been deleted failed with a constraint violation. Worse, because each
+query auto-commits independently (there's no transaction wrapping the two statements), the site
+was already gone from the database by the time that error surfaced — the API reported a 500 for
+an operation that had, in fact, already succeeded, leaving in-memory and database state
+inconsistent until the next restart re-hydrated and the site simply vanished. Fixed by recording
+the audit event *before* the delete, so the foreign key is satisfied at insert time and
+`ON DELETE SET NULL` does what it's actually for: the historical record survives with `site_id`
+nulled out, exactly as it does for a rule, asset, device, or point deletion (none of which had
+this problem, since none of them reference their own row as the audit event's site).
+
+**How to extend further:** there's still no admin UI for any of this — everything above was
+verified directly against the API (curl and Postgres). Building the actual "add a site/device"
+forms in the web app, reusing the Server Actions + static-export-twin pattern already established
+for rules and manual control, is the natural next step once this is wired into a real onboarding
+flow.
+
 ### There was no real authentication at all
 
 **Gap:** `apps/web/src/app/login/page.tsx` was a static form with no submit handler at all — the
@@ -99,14 +140,12 @@ coordinates when present and only falls back to the generated grid for a device 
 recorded position, so a newly-added, not-yet-surveyed device still shows up rather than being
 dropped.
 
-**How to extend further:** positions currently live only in the in-memory seed data — devices are
-not yet persisted to or hydrated from Postgres at all (see "Device/point provisioning" below), so
-a position set today does not survive an API restart when a database is configured. To make this
-durable: (1) add device create/update endpoints, (2) store `position_x`/`position_y` in the
-existing `devices.metadata` jsonb column (already in the schema, unused), (3) hydrate devices from
-the database in `PlatformService.onModuleInit()` the same way rules/telemetry/commands already
-are. In production this data would come from a site commissioning/survey step (GPS or as-built
-drawing coordinates converted to percentages of the site boundary), not be hand-typed.
+**Update:** this is now durable — see "Site/device/point provisioning had no CRUD" above, which
+added device persistence (including `positionX`/`positionY`/`placementNote` in the
+`devices.metadata` jsonb column) and hydration on boot. In production this data would still come
+from a site commissioning/survey step (GPS or as-built drawing coordinates converted to
+percentages of the site boundary) rather than being hand-typed, but it now at least survives a
+restart once entered.
 
 ### Farm irrigation had no manual control at all
 
@@ -176,22 +215,6 @@ telemetry ingestion path can be exposed without inheriting the human-auth model'
 weakness. That's a materially bigger change than the tunnel and should wait until there's more
 than a handful of pilot sites to justify it.
 
-### Site/device/point provisioning has no CRUD
-
-**Gap:** Sites, assets, devices, and points are fixed, hardcoded seed arrays regardless of
-whether a database is configured — there are no create/update/delete endpoints for any of them.
-Rules, telemetry, commands, alerts, incidents, audit events, edge-sync batches, and report exports
-are all fully persisted (see `docs/11-deployment-railway.md`); this layer is not.
-
-**How to fix:** add `POST/PATCH/DELETE` endpoints under `sites`, `assets`, `devices`, and `points`
-modules following the exact pattern already proven for rules
-(`apps/api/src/modules/rules/*.dto.ts`, `rules.controller.ts`,
-`PlatformService.createRule`/`updateRule`/`deleteRule`): DTO with `class-validator` decorators,
-`RequirePermissions("device:manage")`/`"site:manage"` guard, dual-write to the in-memory array and
-(when `DatabaseService.isConfigured()`) to Postgres, and hydration in `onModuleInit()`. This is
-the highest-value remaining gap for a real pilot, since onboarding an actual customer site means
-registering real devices and points, not editing seed data in source.
-
 ### Irrigation and pump safety limits are not yet admin-configurable per site
 
 **Gap:** `defaultSafetyLimits` in `packages/gaia-core` (max pressure, dry-run flow threshold, pump
@@ -251,3 +274,12 @@ back to `/login`. A second run confirmed a `viewer` account sees no Admin/Audit 
 a real 404 navigating to `/admin` directly by URL, not just a hidden link. The static export was
 rebuilt end-to-end afterward to confirm the login/session code paths (which import a Server
 Action, like the rule-management and manual-control work before it) don't break that build.
+
+Provisioning CRUD was verified directly against real Postgres end-to-end: created a site, an
+asset on it, a device on that asset (with position data), and a point on that device via the live
+API; confirmed each landed correctly via `GET /sites/:id` and direct `psql` queries (including the
+device's position inside `devices.metadata`); restarted the API process and confirmed the entire
+chain survived; confirmed deleting a site with a device still attached is blocked (403); deleted
+the point, device, and site in order and confirmed each delete actually took effect. That sequence
+is what surfaced the `deleteSite` audit-ordering bug described above — it never showed up against
+the unconfigured-database unit tests, only against a real foreign key.

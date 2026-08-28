@@ -51,6 +51,52 @@ export interface CreateRuleInput {
 
 export type UpdateRuleInput = Partial<Omit<CreateRuleInput, "siteId">>;
 
+export interface CreateSiteInput {
+  name: string;
+  type: Site["type"];
+  locationName: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export type UpdateSiteInput = Partial<CreateSiteInput> & { status?: Site["status"]; edgeStatus?: Site["edgeStatus"] };
+
+export interface CreateAssetInput {
+  siteId: string;
+  name: string;
+  type: Asset["type"];
+}
+
+export type UpdateAssetInput = Partial<Omit<CreateAssetInput, "siteId">>;
+
+export interface CreateDeviceInput {
+  siteId: string;
+  assetId?: string;
+  gatewayId?: string;
+  name: string;
+  deviceType: string;
+  protocol: Device["protocol"];
+  driverType: string;
+  positionX?: number;
+  positionY?: number;
+  placementNote?: string;
+}
+
+export type UpdateDeviceInput = Partial<Omit<CreateDeviceInput, "siteId">> & { health?: Device["health"] };
+
+export interface CreatePointInput {
+  siteId: string;
+  assetId?: string;
+  deviceId: string;
+  canonicalName: Point["canonicalName"];
+  label: string;
+  unit: string;
+  capability: Point["capability"];
+  thresholdConfig?: Record<string, number>;
+}
+
+export type UpdatePointInput = Partial<Omit<CreatePointInput, "siteId" | "deviceId" | "canonicalName">> & { quality?: Point["quality"] };
+
 export interface CommandRecord {
   id: string;
   tenantId: string;
@@ -157,14 +203,29 @@ export class PlatformService implements OnModuleInit {
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit(): Promise<void> {
-    // Every domain with a real mutating endpoint (rules, telemetry, commands, alerts,
-    // incidents, edge-sync, report exports, audit) hydrates from Postgres here and dual-writes
-    // on every mutation, so a restart doesn't lose real pilot data. Sites/assets/devices/points
-    // and maintenance tasks have no mutating endpoint at all yet — they stay the fixed seed data
-    // described in docs/00-platform-vision.md's MVP boundary regardless of DATABASE_URL. When no
-    // DATABASE_URL is set (the static GitHub Pages demo, or local dev without a database), all
-    // of this falls back to the hardcoded seed data below exactly as before.
+    // Every domain with a real mutating endpoint (sites/assets/devices/points, rules, telemetry,
+    // commands, alerts, incidents, edge-sync, report exports, audit) hydrates from Postgres here
+    // and dual-writes on every mutation, so a restart doesn't lose real pilot data. Maintenance
+    // tasks have no mutating endpoint at all yet — they stay the fixed seed data described in
+    // docs/00-platform-vision.md's MVP boundary regardless of DATABASE_URL. When no DATABASE_URL
+    // is set (the static GitHub Pages demo, or local dev without a database), all of this falls
+    // back to the hardcoded seed data below exactly as before.
     if (!this.db.isConfigured()) return;
+
+    // Sites/assets/devices/points hydrate first, in that dependency order, since commands below
+    // looks up canonical point names via this.points — it must see the real hydrated points, not
+    // the hardcoded seed array, or a pilot's real command history would show the wrong names.
+    const siteRows = await this.db.query<SiteRow>("SELECT * FROM sites ORDER BY created_at ASC");
+    if (siteRows.rows.length > 0) this.sites = siteRows.rows.map((row) => mapSiteRow(row));
+
+    const assetRows = await this.db.query<AssetRow>("SELECT * FROM assets ORDER BY created_at ASC");
+    if (assetRows.rows.length > 0) this.assets = assetRows.rows.map((row) => mapAssetRow(row));
+
+    const deviceRows = await this.db.query<DeviceRow>("SELECT * FROM devices ORDER BY created_at ASC");
+    if (deviceRows.rows.length > 0) this.devices = deviceRows.rows.map((row) => mapDeviceRow(row));
+
+    const pointRows = await this.db.query<PointRow>("SELECT * FROM points ORDER BY created_at ASC");
+    if (pointRows.rows.length > 0) this.points = pointRows.rows.map((row) => mapPointRow(row));
 
     const rows = await this.db.query<RuleRow>("SELECT * FROM rules ORDER BY created_at ASC");
     if (rows.rows.length > 0) this.rules = rows.rows.map((row) => mapRuleRow(row));
@@ -238,7 +299,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly sites: Site[] = [
+  private sites: Site[] = [
     {
       id: "22222222-2222-4222-8222-222222222201",
       tenantId: DEMO_TENANT_ID,
@@ -270,7 +331,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly assets: Asset[] = [
+  private assets: Asset[] = [
     { id: "33333333-3333-4333-8333-333333333301", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Solar Array A", type: "SolarSystem", status: "OK" },
     { id: "33333333-3333-4333-8333-333333333302", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222203", name: "Battery Bank A", type: "BatterySystem", status: "OK" },
     { id: "33333333-3333-4333-8333-333333333303", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222202", name: "Primary Water Tank", type: "WaterSystem", status: "Watch" },
@@ -281,7 +342,7 @@ export class PlatformService implements OnModuleInit {
     { id: "33333333-3333-4333-8333-333333333308", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", name: "Grid Connection", type: "GridConnection", status: "OK" }
   ];
 
-  private readonly devices: Device[] = [
+  private devices: Device[] = [
     {
       id: "44444444-4444-4444-8444-444444444401",
       tenantId: DEMO_TENANT_ID,
@@ -410,7 +471,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly points: Point[] = [
+  private points: Point[] = [
     { id: "55555555-5555-4555-8555-555555555501", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333301", deviceId: "44444444-4444-4444-8444-444444444401", canonicalName: "energy.solar.power.kw", label: "Solar production", unit: "kW", quality: "OK", capability: "read", thresholdConfig: { watch_low: 2 } },
     { id: "55555555-5555-4555-8555-555555555502", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222203", assetId: "33333333-3333-4333-8333-333333333302", deviceId: "44444444-4444-4444-8444-444444444402", canonicalName: "energy.battery.soc.percent", label: "Battery SOC", unit: "%", quality: "OK", capability: "read", thresholdConfig: { warning_low: 25 } },
     { id: "55555555-5555-4555-8555-555555555503", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222202", assetId: "33333333-3333-4333-8333-333333333303", deviceId: "44444444-4444-4444-8444-444444444403", canonicalName: "water.tank.level.percent", label: "Tank level", unit: "%", quality: "WARN", capability: "read", thresholdConfig: { critical_low: 15, warning_low: 35 } },
@@ -612,6 +673,489 @@ export class PlatformService implements OnModuleInit {
 
   listPoints(principal: Principal, deviceId?: string): Point[] {
     return this.scope(this.points, principal.tenantId).filter((point) => !deviceId || point.deviceId === deviceId);
+  }
+
+  async createSite(input: CreateSiteInput, principal: Principal): Promise<Site> {
+    if (!hasPermission(principal.role, "site:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const site: Site = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      name: input.name,
+      type: input.type,
+      locationName: input.locationName,
+      latitude: input.latitude,
+      longitude: input.longitude,
+      status: "OK",
+      // A newly provisioned site has no edge gateway registered yet — "Simulated" reflects that
+      // accurately rather than implying a real connection that doesn't exist.
+      edgeStatus: "Simulated"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO sites (id, tenant_id, name, type, location_name, latitude, longitude, status, edge_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [site.id, site.tenantId, site.name, site.type, site.locationName, site.latitude ?? null, site.longitude ?? null, site.status, site.edgeStatus]
+      );
+    }
+
+    this.sites.push(site);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "site.created",
+      siteId: site.id,
+      entityType: "site",
+      entityId: site.id,
+      afterMetadata: { name: site.name, type: site.type },
+      reason: `Site "${site.name}" created.`
+    });
+
+    return site;
+  }
+
+  async updateSite(siteId: string, input: UpdateSiteInput, principal: Principal): Promise<Site> {
+    if (!hasPermission(principal.role, "site:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const site = this.requireSite(siteId, principal.tenantId);
+    const before = { ...site };
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(site, patch);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `UPDATE sites SET name=$1, type=$2, location_name=$3, latitude=$4, longitude=$5, status=$6, edge_status=$7, updated_at=now()
+         WHERE id=$8 AND tenant_id=$9`,
+        [site.name, site.type, site.locationName, site.latitude ?? null, site.longitude ?? null, site.status, site.edgeStatus, site.id, principal.tenantId]
+      );
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "site.updated",
+      siteId: site.id,
+      entityType: "site",
+      entityId: site.id,
+      beforeMetadata: { name: before.name, status: before.status },
+      afterMetadata: { name: site.name, status: site.status },
+      reason: `Site "${site.name}" updated.`
+    });
+
+    return site;
+  }
+
+  async deleteSite(siteId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "site:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const site = this.requireSite(siteId, principal.tenantId);
+    const remainingDevices = this.devices.filter((device) => device.siteId === siteId && device.tenantId === principal.tenantId);
+    if (remainingDevices.length > 0) {
+      // The schema cascades a site delete down through assets/devices/points/telemetry/rules —
+      // silently destroying that much data as a side effect of one call is exactly the kind of
+      // surprising blast radius worth blocking outright rather than just documenting.
+      throw new ForbiddenException(`Cannot delete a site with ${remainingDevices.length} device(s) still registered. Remove its devices first.`);
+    }
+
+    // Audit first, then delete — unlike every other delete* method here, this audit event's own
+    // siteId is the row about to disappear. audit_events.site_id is ON DELETE SET NULL precisely
+    // so a historical entry can outlive the site it was about, but that only works if the row
+    // exists to satisfy the foreign key at INSERT time; inserting after the DELETE fails outright
+    // (found by actually running this against Postgres, not by inspection).
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "site.deleted",
+      siteId: site.id,
+      entityType: "site",
+      entityId: site.id,
+      beforeMetadata: { name: site.name },
+      reason: `Site "${site.name}" deleted.`
+    });
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`DELETE FROM sites WHERE id=$1 AND tenant_id=$2`, [site.id, principal.tenantId]);
+    }
+
+    this.sites = this.sites.filter((candidate) => candidate.id !== site.id);
+
+    return { deleted: true };
+  }
+
+  async createAsset(input: CreateAssetInput, principal: Principal): Promise<Asset> {
+    if (!hasPermission(principal.role, "asset:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    this.requireSite(input.siteId, principal.tenantId);
+
+    const asset: Asset = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      name: input.name,
+      type: input.type,
+      status: "OK"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`INSERT INTO assets (id, tenant_id, site_id, name, type, status) VALUES ($1,$2,$3,$4,$5,$6)`, [
+        asset.id,
+        asset.tenantId,
+        asset.siteId,
+        asset.name,
+        asset.type,
+        asset.status
+      ]);
+    }
+
+    this.assets.push(asset);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "asset.created",
+      siteId: asset.siteId,
+      entityType: "asset",
+      entityId: asset.id,
+      afterMetadata: { name: asset.name, type: asset.type },
+      reason: `Asset "${asset.name}" created.`
+    });
+
+    return asset;
+  }
+
+  async updateAsset(assetId: string, input: UpdateAssetInput, principal: Principal): Promise<Asset> {
+    if (!hasPermission(principal.role, "asset:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const asset = this.requireAsset(assetId, principal.tenantId);
+    const before = { ...asset };
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(asset, patch);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE assets SET name=$1, type=$2, status=$3, updated_at=now() WHERE id=$4 AND tenant_id=$5`, [
+        asset.name,
+        asset.type,
+        asset.status,
+        asset.id,
+        principal.tenantId
+      ]);
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "asset.updated",
+      siteId: asset.siteId,
+      entityType: "asset",
+      entityId: asset.id,
+      beforeMetadata: { name: before.name, status: before.status },
+      afterMetadata: { name: asset.name, status: asset.status },
+      reason: `Asset "${asset.name}" updated.`
+    });
+
+    return asset;
+  }
+
+  async deleteAsset(assetId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "asset:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const asset = this.requireAsset(assetId, principal.tenantId);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`DELETE FROM assets WHERE id=$1 AND tenant_id=$2`, [asset.id, principal.tenantId]);
+    }
+
+    this.assets = this.assets.filter((candidate) => candidate.id !== asset.id);
+    // Devices referencing this asset aren't deleted (assets.id -> devices.asset_id is ON DELETE
+    // SET NULL) — clear it in memory too so the in-memory state matches what the database now has.
+    for (const device of this.devices) {
+      if (device.assetId === asset.id) device.assetId = undefined;
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "asset.deleted",
+      siteId: asset.siteId,
+      entityType: "asset",
+      entityId: asset.id,
+      beforeMetadata: { name: asset.name },
+      reason: `Asset "${asset.name}" deleted.`
+    });
+
+    return { deleted: true };
+  }
+
+  async createDevice(input: CreateDeviceInput, principal: Principal): Promise<Device> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    this.requireSite(input.siteId, principal.tenantId);
+    if (input.assetId) this.requireAsset(input.assetId, principal.tenantId);
+
+    const device: Device = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      assetId: input.assetId,
+      gatewayId: input.gatewayId,
+      name: input.name,
+      deviceType: input.deviceType,
+      protocol: input.protocol,
+      driverType: input.driverType,
+      health: "OK",
+      lastSeenUtc: nowIso(),
+      secureIdentityStatus: "placeholder",
+      positionX: input.positionX,
+      positionY: input.positionY,
+      placementNote: input.placementNote
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO devices (id, tenant_id, site_id, asset_id, gateway_id, name, device_type, protocol, driver_type, health, last_seen_utc, secure_identity_status, metadata)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          device.id,
+          device.tenantId,
+          device.siteId,
+          device.assetId ?? null,
+          device.gatewayId ?? null,
+          device.name,
+          device.deviceType,
+          device.protocol,
+          device.driverType,
+          device.health,
+          device.lastSeenUtc,
+          device.secureIdentityStatus,
+          JSON.stringify(devicePlacementMetadata(device))
+        ]
+      );
+    }
+
+    this.devices.push(device);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "device.created",
+      siteId: device.siteId,
+      entityType: "device",
+      entityId: device.id,
+      afterMetadata: { name: device.name, deviceType: device.deviceType, protocol: device.protocol },
+      reason: `Device "${device.name}" created.`
+    });
+
+    return device;
+  }
+
+  async updateDevice(deviceId: string, input: UpdateDeviceInput, principal: Principal): Promise<Device> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const device = this.requireDevice(deviceId, principal.tenantId);
+    if (input.assetId) this.requireAsset(input.assetId, principal.tenantId);
+    const before = { ...device };
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(device, patch);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `UPDATE devices SET asset_id=$1, gateway_id=$2, name=$3, device_type=$4, protocol=$5, driver_type=$6, health=$7, metadata=$8, updated_at=now()
+         WHERE id=$9 AND tenant_id=$10`,
+        [
+          device.assetId ?? null,
+          device.gatewayId ?? null,
+          device.name,
+          device.deviceType,
+          device.protocol,
+          device.driverType,
+          device.health,
+          JSON.stringify(devicePlacementMetadata(device)),
+          device.id,
+          principal.tenantId
+        ]
+      );
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "device.updated",
+      siteId: device.siteId,
+      entityType: "device",
+      entityId: device.id,
+      beforeMetadata: { name: before.name, health: before.health },
+      afterMetadata: { name: device.name, health: device.health },
+      reason: `Device "${device.name}" updated.`
+    });
+
+    return device;
+  }
+
+  async deleteDevice(deviceId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const device = this.requireDevice(deviceId, principal.tenantId);
+
+    if (this.db.isConfigured()) {
+      // Cascades to this device's points and telemetry history at the database level — that's
+      // the expected, unsurprising consequence of decommissioning a device, unlike a site
+      // cascading through everything beneath it.
+      await this.db.query(`DELETE FROM devices WHERE id=$1 AND tenant_id=$2`, [device.id, principal.tenantId]);
+    }
+
+    this.devices = this.devices.filter((candidate) => candidate.id !== device.id);
+    this.points = this.points.filter((point) => point.deviceId !== device.id);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "device.deleted",
+      siteId: device.siteId,
+      entityType: "device",
+      entityId: device.id,
+      beforeMetadata: { name: device.name },
+      reason: `Device "${device.name}" deleted.`
+    });
+
+    return { deleted: true };
+  }
+
+  async createPoint(input: CreatePointInput, principal: Principal): Promise<Point> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    this.requireSite(input.siteId, principal.tenantId);
+    const device = this.requireDevice(input.deviceId, principal.tenantId);
+    if (device.siteId !== input.siteId) {
+      throw new ForbiddenException("Device does not belong to the given site.");
+    }
+    if (input.assetId) this.requireAsset(input.assetId, principal.tenantId);
+
+    const point: Point = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      assetId: input.assetId,
+      deviceId: input.deviceId,
+      canonicalName: input.canonicalName,
+      label: input.label,
+      unit: input.unit,
+      quality: "OK",
+      capability: input.capability,
+      thresholdConfig: input.thresholdConfig
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO points (id, tenant_id, site_id, asset_id, device_id, canonical_name, label, unit, quality, capability, threshold_config)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [
+          point.id,
+          point.tenantId,
+          point.siteId,
+          point.assetId ?? null,
+          point.deviceId,
+          point.canonicalName,
+          point.label,
+          point.unit,
+          point.quality,
+          point.capability,
+          JSON.stringify(point.thresholdConfig ?? {})
+        ]
+      );
+    }
+
+    this.points.push(point);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "point.created",
+      siteId: point.siteId,
+      entityType: "point",
+      entityId: point.id,
+      afterMetadata: { canonicalName: point.canonicalName, capability: point.capability },
+      reason: `Point "${point.label}" created on device ${device.name}.`
+    });
+
+    return point;
+  }
+
+  async updatePoint(pointId: string, input: UpdatePointInput, principal: Principal): Promise<Point> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const point = this.requirePoint(pointId, principal.tenantId);
+    if (input.assetId) this.requireAsset(input.assetId, principal.tenantId);
+    const before = { ...point };
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(point, patch);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE points SET label=$1, unit=$2, capability=$3, quality=$4, threshold_config=$5, updated_at=now() WHERE id=$6 AND tenant_id=$7`, [
+        point.label,
+        point.unit,
+        point.capability,
+        point.quality,
+        JSON.stringify(point.thresholdConfig ?? {}),
+        point.id,
+        principal.tenantId
+      ]);
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "point.updated",
+      siteId: point.siteId,
+      entityType: "point",
+      entityId: point.id,
+      beforeMetadata: { label: before.label, capability: before.capability },
+      afterMetadata: { label: point.label, capability: point.capability },
+      reason: `Point "${point.label}" updated.`
+    });
+
+    return point;
+  }
+
+  async deletePoint(pointId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const point = this.requirePoint(pointId, principal.tenantId);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`DELETE FROM points WHERE id=$1 AND tenant_id=$2`, [point.id, principal.tenantId]);
+    }
+
+    this.points = this.points.filter((candidate) => candidate.id !== point.id);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "point.deleted",
+      siteId: point.siteId,
+      entityType: "point",
+      entityId: point.id,
+      beforeMetadata: { label: point.label },
+      reason: `Point "${point.label}" deleted.`
+    });
+
+    return { deleted: true };
   }
 
   latestTelemetry(principal: Principal, siteId?: string): TelemetryReading[] {
@@ -1171,6 +1715,13 @@ export class PlatformService implements OnModuleInit {
     return site;
   }
 
+  private requireAsset(assetId: string, tenantId: string): Asset {
+    const asset = this.assets.find((candidate) => candidate.id === assetId);
+    if (!asset) throw new NotFoundException("Asset not found.");
+    if (asset.tenantId !== tenantId) throw new ForbiddenException("Asset is outside tenant scope.");
+    return asset;
+  }
+
   private requireDevice(deviceId: string, tenantId: string): Device {
     const device = this.devices.find((candidate) => candidate.id === deviceId);
     if (!device) throw new NotFoundException("Device not found.");
@@ -1354,6 +1905,132 @@ export class PlatformService implements OnModuleInit {
 
     return auditEvent;
   }
+}
+
+/** devices.metadata is a general-purpose jsonb column with no other current use — real physical
+ * placement (docs/13-pilot-readiness.md, "Sensor map showed a computed layout, not real
+ * placement") is stored there so it survives a restart once a database is configured, instead of
+ * only living in the hardcoded in-memory seed data. */
+function devicePlacementMetadata(device: Device): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {};
+  if (device.positionX !== undefined) metadata.positionX = device.positionX;
+  if (device.positionY !== undefined) metadata.positionY = device.positionY;
+  if (device.placementNote !== undefined) metadata.placementNote = device.placementNote;
+  return metadata;
+}
+
+interface SiteRow {
+  id: string;
+  tenant_id: string;
+  name: string;
+  type: string;
+  location_name: string;
+  latitude: string | null;
+  longitude: string | null;
+  status: string;
+  edge_status: string;
+}
+
+function mapSiteRow(row: SiteRow): Site {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    name: row.name,
+    type: row.type as Site["type"],
+    locationName: row.location_name,
+    latitude: row.latitude !== null ? Number(row.latitude) : undefined,
+    longitude: row.longitude !== null ? Number(row.longitude) : undefined,
+    status: row.status as Site["status"],
+    edgeStatus: row.edge_status as Site["edgeStatus"]
+  };
+}
+
+interface AssetRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  name: string;
+  type: string;
+  status: string;
+}
+
+function mapAssetRow(row: AssetRow): Asset {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    name: row.name,
+    type: row.type as Asset["type"],
+    status: row.status as Asset["status"]
+  };
+}
+
+interface DeviceRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  asset_id: string | null;
+  gateway_id: string | null;
+  name: string;
+  device_type: string;
+  protocol: string;
+  driver_type: string;
+  health: string;
+  last_seen_utc: string | null;
+  firmware_version: string | null;
+  secure_identity_status: string;
+  metadata: { positionX?: number; positionY?: number; placementNote?: string } | null;
+}
+
+function mapDeviceRow(row: DeviceRow): Device {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    assetId: row.asset_id ?? undefined,
+    gatewayId: row.gateway_id ?? undefined,
+    name: row.name,
+    deviceType: row.device_type,
+    protocol: row.protocol as Device["protocol"],
+    driverType: row.driver_type,
+    health: row.health as Device["health"],
+    lastSeenUtc: row.last_seen_utc ?? undefined,
+    firmwareVersion: row.firmware_version ?? undefined,
+    secureIdentityStatus: row.secure_identity_status as Device["secureIdentityStatus"],
+    positionX: row.metadata?.positionX,
+    positionY: row.metadata?.positionY,
+    placementNote: row.metadata?.placementNote
+  };
+}
+
+interface PointRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  asset_id: string | null;
+  device_id: string;
+  canonical_name: string;
+  label: string;
+  unit: string;
+  quality: string;
+  capability: string;
+  threshold_config: Record<string, number> | null;
+}
+
+function mapPointRow(row: PointRow): Point {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    assetId: row.asset_id ?? undefined,
+    deviceId: row.device_id,
+    canonicalName: row.canonical_name as Point["canonicalName"],
+    label: row.label,
+    unit: row.unit,
+    quality: row.quality as Point["quality"],
+    capability: row.capability as Point["capability"],
+    thresholdConfig: row.threshold_config ?? undefined
+  };
 }
 
 interface RuleRow {

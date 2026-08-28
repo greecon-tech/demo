@@ -36,9 +36,10 @@ Also in this phase, once real accounts exist:
 
 ## Phase 1 — Pilot reliability
 
-Everything already tracked in `docs/13-pilot-readiness.md`'s "Still open" section belongs here:
+Everything already tracked in `docs/13-pilot-readiness.md`'s "Still open" section belongs here.
+Site/device/point provisioning CRUD — the item originally listed first here — is done (API-level;
+there's still no admin UI for it, see that doc's entry). What's left:
 
-- Site/device/point provisioning CRUD (currently fixed seed data regardless of database config).
 - Real field protocol drivers (Modbus/OPC-UA) — today only `apps/edge-simulator` exists.
 - Per-site configurable safety limits (currently one hardcoded `defaultSafetyLimits` for every
   tenant and site).
