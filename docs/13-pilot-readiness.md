@@ -7,6 +7,61 @@ found — it is meant to stay current, not be a one-time snapshot.
 
 ## Fixed in this pass
 
+### No real field protocol drivers existed
+
+**Gap:** `apps/edge-simulator` publishes synthetic sine-wave readings. Nothing in the repo
+actually read a Modbus, OPC-UA, or analog field device — the `protocol` field on `Device` modeled
+these as first-class concepts, but no driver implemented any of them. Without this, nothing a
+pilot site actually plugs in could ever reach the platform.
+
+**Fix:** `apps/edge-driver-modbus` — a real Modbus TCP client that polls configured holding/input
+registers, decodes `uint16`/`int16`/`float32` values (with an optional scale factor for raw counts
+→ engineering units), and publishes the exact same `TelemetryMessage` JSON shape/topic
+`apps/edge-simulator` uses. `apps/edge-agent` bridges it to the cloud unchanged — no code needed
+to change there, exactly as promised when the bridge was built. See `docs/16-modbus-driver.md` for
+the config format and current limitations (no write support yet, no stale-data detection, fixed
+big-endian byte order, TCP only — no RTU/serial).
+
+**Verified against a real Modbus TCP server** (not a mock) — `modbus-serial`'s own `ServerTCP`
+backing a simulated pump station PLC with a scaled `uint16` pressure register and a `float32` flow
+register spanning two registers, both drifting over time. Confirmed the driver correctly decoded
+both and, through the existing edge-agent bridge and a real running API, watched the actual
+decoded values land in `telemetry_readings` in Postgres, changing on every poll cycle in step with
+the simulated device's registers — a genuine protocol conversation end to end, not synthetic data.
+
+### Irrigation and pump safety limits were not admin-configurable per site
+
+**Gap:** `defaultSafetyLimits` in `packages/gaia-core` (max pressure, dry-run flow threshold, pump
+runtime/rest, irrigation run cap) was one fixed object applied to every site and tenant. A real
+pilot with sites that have genuinely different physical limits (different pipe ratings, different
+crop/irrigation zone sizes) would either have automation falsely blocked by a limit too tight for
+its equipment, or — worse — a limit too loose to actually protect it.
+
+**Fix:** `sites.safety_limits` (jsonb, `004_site_safety_limits.sql`) holds a per-site partial
+override of any subset of the five `SafetyLimits` fields, set via `PATCH /sites/:id`. A site with
+no override, or one that only overrides some fields, still gets `defaultSafetyLimits` for
+everything else — `evaluateCommandSafety` is called with `{...defaultSafetyLimits,
+...site.safetyLimits}`, not the site's override alone. `Site.safetyLimits` (in `packages/shared`)
+deliberately duplicates gaia-core's `SafetyLimits` shape field-for-field rather than importing it,
+since `shared` shouldn't depend on `gaia-core`.
+
+**Verified against real Postgres**: tightened a site's `maxPressureBar` down to 1 bar against its
+seeded 2.8 bar pressure reading and confirmed a pump command that would otherwise dispatch is now
+correctly blocked with `"Water pressure 2.70 bar exceeds limit 1.00 bar"`; reset it and confirmed
+the command dispatches again; confirmed the override (and its later reset back to no override)
+both survive an API restart.
+
+### Maintenance tasks had no mutation endpoints
+
+**Gap:** `maintenanceTasks` was deliberately `readonly` in `PlatformService` — there was a `GET`
+but no way to create, update, or close a maintenance task.
+
+**Fix:** `POST /maintenance` and `PATCH /maintenance/:id`, gated on `maintenance:manage`
+(owner/admin/operator), following the same dual-write/hydration pattern as everything else.
+Setting `status: "complete"` stamps `completedAtUtc` server-side automatically; moving a task back
+to `"open"` clears it. Verified live: created a task, marked it complete with a completion log,
+and confirmed both the status and the timestamp survive an API restart.
+
 ### Site/device/point provisioning had no CRUD
 
 **Gap:** Sites, assets, devices, and points were fixed, hardcoded seed arrays regardless of
@@ -186,18 +241,6 @@ threaded through today) and add a check parallel to the pump's rest-time logic.
 
 ## Still open
 
-### No real field protocol drivers yet
-
-**Gap:** `apps/edge-simulator` publishes synthetic sine-wave readings. Nothing in the repo
-actually reads a Modbus, OPC-UA, or analog field device — the `protocol` field on `Device` models
-these as first-class concepts, but no driver implements any of them.
-
-**How to fix:** write a driver process (start with Modbus TCP/RTU — it's the most common protocol
-for pumps, VFDs, and level transmitters) that publishes `TelemetryMessage` JSON to
-`greecon/{tenantId}/{siteId}/telemetry/{deviceId}` on the on-site broker. `apps/edge-agent`
-(added this pass) already bridges whatever's on that topic to the cloud API — a real driver is a
-drop-in replacement for the simulator, no changes needed elsewhere.
-
 ### The cloud API isn't reachable from a remote edge site
 
 **Gap:** the API is deliberately not exposed on the public internet (`docs/07-security-and-
@@ -214,28 +257,6 @@ JWT or mTLS client cert per gateway, checked against a table of provisioned gate
 telemetry ingestion path can be exposed without inheriting the human-auth model's current
 weakness. That's a materially bigger change than the tunnel and should wait until there's more
 than a handful of pilot sites to justify it.
-
-### Irrigation and pump safety limits are not yet admin-configurable per site
-
-**Gap:** `defaultSafetyLimits` in `packages/gaia-core` (max pressure, dry-run flow threshold, pump
-runtime/rest, irrigation run cap) is one fixed object applied to every site and tenant. A real
-pilot will have sites with genuinely different physical limits (different pipe ratings, different
-crop/irrigation zone sizes).
-
-**How to fix:** move `SafetyLimits` from a hardcoded constant to a per-site (or per-device)
-configuration value, stored alongside the site/asset record once the provisioning CRUD above
-exists, and passed into `evaluateCommandSafety` per the site being commanded instead of the module
-constant. `defaultSafetyLimits` should remain as the fallback for a site that hasn't set explicit
-limits.
-
-### Maintenance tasks have no mutation endpoints
-
-**Gap:** `maintenanceTasks` is deliberately `readonly` in `PlatformService` — there is a `GET` but
-no way to create, update, or close a maintenance task.
-
-**How to fix:** same pattern as rules/devices above — add a maintenance module with
-create/update/close endpoints, gated on `maintenance:manage` (owner/admin/operator already hold
-it), dual-writing to `maintenance_tasks` (already in the schema).
 
 ### Manual command targets are not filtered by role/site scope beyond permission
 

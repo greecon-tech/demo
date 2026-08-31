@@ -304,4 +304,62 @@ describe("PlatformService", () => {
       ).rejects.toThrow(ForbiddenException);
     });
   });
+
+  describe("per-site safety limits", () => {
+    it("applies a tighter site-specific pressure limit instead of the global default", async () => {
+      // Seed pressure for this site is 2.8 bar — comfortably under the 5.5 bar global default,
+      // but over a site that's tightened its own limit down to 1 bar (e.g. thinner pipe rating).
+      await platform.updateSite(SITE_ID, { safetyLimits: { maxPressureBar: 1 } }, OWNER);
+
+      const record = await platform.createCommand(
+        {
+          siteId: SITE_ID,
+          targetDeviceId: PUMP_DEVICE_ID,
+          targetPointId: PUMP_POINT_ID,
+          requestedValue: "OFF",
+          reason: "Routine shutdown"
+        },
+        OWNER
+      );
+
+      expect(record.dispatchStatus).toBe("blocked");
+      expect(record.safetyEvaluation.reasons.join(" ")).toContain("exceeds limit");
+    });
+
+    it("falls back to the global default for any field a site hasn't overridden", async () => {
+      // Only overriding maxPressureBar with a permissive value — dry-run/pump-rest/irrigation
+      // limits should still come from defaultSafetyLimits, not be wiped out to undefined.
+      await platform.updateSite(SITE_ID, { safetyLimits: { maxPressureBar: 100 } }, OWNER);
+
+      const record = await platform.createCommand(
+        {
+          siteId: SITE_ID,
+          targetDeviceId: PUMP_DEVICE_ID,
+          targetPointId: PUMP_POINT_ID,
+          requestedValue: "OFF",
+          reason: "Routine shutdown"
+        },
+        OWNER
+      );
+
+      expect(record.dispatchStatus).toBe("simulated_dispatch");
+    });
+  });
+
+  describe("maintenance tasks", () => {
+    it("blocks a viewer from creating a maintenance task", async () => {
+      await expect(platform.createMaintenanceTask({ siteId: SITE_ID, title: "Test task" }, VIEWER)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("creates a task, then marks it complete and stamps completedAtUtc", async () => {
+      const task = await platform.createMaintenanceTask({ siteId: SITE_ID, title: "Inspect flow meter", notes: "Annual check" }, OWNER);
+      expect(task.status).toBe("open");
+      expect(task.completedAtUtc).toBeUndefined();
+
+      const completed = await platform.updateMaintenanceTask(task.id, { status: "complete", completionLog: "Calibrated, within tolerance." }, OWNER);
+      expect(completed.status).toBe("complete");
+      expect(completed.completedAtUtc).toBeDefined();
+      expect(completed.completionLog).toBe("Calibrated, within tolerance.");
+    });
+  });
 });

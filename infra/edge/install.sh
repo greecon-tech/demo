@@ -54,6 +54,7 @@ npm ci
 npm run build:packages
 npm run build -w @greecon/edge-agent
 npm run build -w @greecon/edge-simulator
+npm run build -w @greecon/edge-driver-modbus
 chown -R greecon:greecon "$INSTALL_DIR"
 
 echo "==> Installing site configuration"
@@ -68,10 +69,15 @@ chown root:greecon "$ENV_DIR/edge.env"
 echo "==> Installing systemd units"
 cp "$SCRIPT_DIR/greecon-edge-agent.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/greecon-edge-simulator.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/greecon-edge-driver-modbus.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable greecon-edge-agent
-# greecon-edge-simulator is intentionally NOT enabled here — it's a synthetic telemetry source
-# for proving the pipeline works before real device drivers exist. See the deployment guide.
+# Neither greecon-edge-simulator nor greecon-edge-driver-modbus is enabled here.
+# greecon-edge-simulator is a synthetic telemetry source for proving the pipeline works before
+# real devices are wired up. greecon-edge-driver-modbus needs /etc/greecon/modbus.json (see
+# docs/16-modbus-driver.md) describing this site's real registers, which doesn't exist until
+# devices are provisioned — enable it once that config is in place:
+#   systemctl enable --now greecon-edge-driver-modbus
 
 cat <<'EOF'
 
