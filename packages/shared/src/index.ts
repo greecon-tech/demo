@@ -193,6 +193,17 @@ export interface User {
   status: "active" | "disabled";
 }
 
+/** Mirrors packages/gaia-core's SafetyLimits field-for-field, duplicated rather than imported so
+ * this package doesn't take a dependency on gaia-core. Every field is optional: an unset field
+ * falls back to gaia-core's defaultSafetyLimits (see PlatformService.createCommand). */
+export interface SiteSafetyLimits {
+  maxPressureBar?: number;
+  dryRunFlowLpm?: number;
+  maxPumpRuntimeMinutes?: number;
+  minPumpRestMinutes?: number;
+  maxIrrigationRunMinutes?: number;
+}
+
 export interface Site {
   id: string;
   tenantId: string;
@@ -203,6 +214,7 @@ export interface Site {
   longitude?: number;
   status: StatusLabel;
   edgeStatus: StatusLabel;
+  safetyLimits?: SiteSafetyLimits;
 }
 
 export interface Asset {

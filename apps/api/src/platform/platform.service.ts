@@ -59,7 +59,11 @@ export interface CreateSiteInput {
   longitude?: number;
 }
 
-export type UpdateSiteInput = Partial<CreateSiteInput> & { status?: Site["status"]; edgeStatus?: Site["edgeStatus"] };
+export type UpdateSiteInput = Partial<CreateSiteInput> & {
+  status?: Site["status"];
+  edgeStatus?: Site["edgeStatus"];
+  safetyLimits?: Site["safetyLimits"];
+};
 
 export interface CreateAssetInput {
   siteId: string;
@@ -96,6 +100,23 @@ export interface CreatePointInput {
 }
 
 export type UpdatePointInput = Partial<Omit<CreatePointInput, "siteId" | "deviceId" | "canonicalName">> & { quality?: Point["quality"] };
+
+export interface CreateMaintenanceTaskInput {
+  siteId: string;
+  assetId?: string;
+  incidentId?: string;
+  title: string;
+  notes?: string;
+  dueAtUtc?: string;
+}
+
+export interface UpdateMaintenanceTaskInput {
+  title?: string;
+  notes?: string;
+  dueAtUtc?: string;
+  status?: MaintenanceTask["status"];
+  completionLog?: string;
+}
 
 export interface CommandRecord {
   id: string;
@@ -153,6 +174,8 @@ export interface MaintenanceTask {
   title: string;
   notes?: string;
   dueAtUtc?: string;
+  completedAtUtc?: string;
+  completionLog?: string;
   status: "open" | "complete";
 }
 
@@ -204,12 +227,10 @@ export class PlatformService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     // Every domain with a real mutating endpoint (sites/assets/devices/points, rules, telemetry,
-    // commands, alerts, incidents, edge-sync, report exports, audit) hydrates from Postgres here
-    // and dual-writes on every mutation, so a restart doesn't lose real pilot data. Maintenance
-    // tasks have no mutating endpoint at all yet — they stay the fixed seed data described in
-    // docs/00-platform-vision.md's MVP boundary regardless of DATABASE_URL. When no DATABASE_URL
-    // is set (the static GitHub Pages demo, or local dev without a database), all of this falls
-    // back to the hardcoded seed data below exactly as before.
+    // commands, alerts, incidents, edge-sync, report exports, audit, maintenance tasks) hydrates
+    // from Postgres here and dual-writes on every mutation, so a restart doesn't lose real pilot
+    // data. When no DATABASE_URL is set (the static GitHub Pages demo, or local dev without a
+    // database), all of this falls back to the hardcoded seed data below exactly as before.
     if (!this.db.isConfigured()) return;
 
     // Sites/assets/devices/points hydrate first, in that dependency order, since commands below
@@ -250,6 +271,9 @@ export class PlatformService implements OnModuleInit {
 
     const reportRows = await this.db.query<ReportExportRow>("SELECT * FROM report_exports ORDER BY created_at DESC LIMIT 200");
     if (reportRows.rows.length > 0) this.reportExports = reportRows.rows.map((row) => mapReportExportRow(row));
+
+    const maintenanceRows = await this.db.query<MaintenanceTaskRow>("SELECT * FROM maintenance_tasks ORDER BY created_at ASC");
+    if (maintenanceRows.rows.length > 0) this.maintenanceTasks = maintenanceRows.rows.map((row) => mapMaintenanceTaskRow(row));
   }
 
   private readonly tenants: Tenant[] = [
@@ -557,7 +581,7 @@ export class PlatformService implements OnModuleInit {
     }
   ];
 
-  private readonly maintenanceTasks: MaintenanceTask[] = [
+  private maintenanceTasks: MaintenanceTask[] = [
     {
       id: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcd01",
       tenantId: DEMO_TENANT_ID,
@@ -729,9 +753,20 @@ export class PlatformService implements OnModuleInit {
 
     if (this.db.isConfigured()) {
       await this.db.query(
-        `UPDATE sites SET name=$1, type=$2, location_name=$3, latitude=$4, longitude=$5, status=$6, edge_status=$7, updated_at=now()
-         WHERE id=$8 AND tenant_id=$9`,
-        [site.name, site.type, site.locationName, site.latitude ?? null, site.longitude ?? null, site.status, site.edgeStatus, site.id, principal.tenantId]
+        `UPDATE sites SET name=$1, type=$2, location_name=$3, latitude=$4, longitude=$5, status=$6, edge_status=$7, safety_limits=$8, updated_at=now()
+         WHERE id=$9 AND tenant_id=$10`,
+        [
+          site.name,
+          site.type,
+          site.locationName,
+          site.latitude ?? null,
+          site.longitude ?? null,
+          site.status,
+          site.edgeStatus,
+          JSON.stringify(site.safetyLimits ?? {}),
+          site.id,
+          principal.tenantId
+        ]
       );
     }
 
@@ -1406,7 +1441,7 @@ export class PlatformService implements OnModuleInit {
 
     const device = this.requireDevice(input.targetDeviceId, principal.tenantId);
     const point = this.requirePoint(input.targetPointId, principal.tenantId);
-    this.requireSite(input.siteId, principal.tenantId);
+    const site = this.requireSite(input.siteId, principal.tenantId);
 
     if (device.siteId !== input.siteId || point.deviceId !== device.id) {
       throw new ForbiddenException("Command target is outside the selected site/device scope.");
@@ -1441,7 +1476,9 @@ export class PlatformService implements OnModuleInit {
       command: commandMessage,
       sensors: this.sensorSnapshot(principal.tenantId, input.siteId),
       states: this.stateSnapshot(principal.tenantId, input.siteId),
-      limits: defaultSafetyLimits,
+      // A site with no explicit override falls back to defaultSafetyLimits field-by-field — a
+      // site that's only overridden, say, maxPressureBar still gets every other default untouched.
+      limits: { ...defaultSafetyLimits, ...site.safetyLimits },
       systemMode: "automatic"
     });
 
@@ -1595,6 +1632,88 @@ export class PlatformService implements OnModuleInit {
     return this.scope(this.maintenanceTasks, principal.tenantId);
   }
 
+  async createMaintenanceTask(input: CreateMaintenanceTaskInput, principal: Principal): Promise<MaintenanceTask> {
+    if (!hasPermission(principal.role, "maintenance:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    this.requireSite(input.siteId, principal.tenantId);
+    if (input.assetId) this.requireAsset(input.assetId, principal.tenantId);
+
+    const task: MaintenanceTask = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      assetId: input.assetId,
+      incidentId: input.incidentId,
+      title: input.title,
+      notes: input.notes,
+      dueAtUtc: input.dueAtUtc,
+      status: "open"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO maintenance_tasks (id, tenant_id, site_id, asset_id, incident_id, title, notes, due_at, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [task.id, task.tenantId, task.siteId, task.assetId ?? null, task.incidentId ?? null, task.title, task.notes ?? null, task.dueAtUtc ?? null, task.status]
+      );
+    }
+
+    this.maintenanceTasks.push(task);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "maintenance.created",
+      siteId: task.siteId,
+      assetId: task.assetId,
+      entityType: "maintenance_task",
+      entityId: task.id,
+      afterMetadata: { title: task.title },
+      reason: `Maintenance task "${task.title}" created.`
+    });
+
+    return task;
+  }
+
+  async updateMaintenanceTask(taskId: string, input: UpdateMaintenanceTaskInput, principal: Principal): Promise<MaintenanceTask> {
+    if (!hasPermission(principal.role, "maintenance:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const task = this.requireMaintenanceTask(taskId, principal.tenantId);
+    const before = { ...task };
+    const patch = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+    Object.assign(task, patch);
+    if (task.status === "complete" && before.status !== "complete") {
+      task.completedAtUtc = nowIso();
+    } else if (task.status === "open") {
+      task.completedAtUtc = undefined;
+    }
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `UPDATE maintenance_tasks SET title=$1, notes=$2, due_at=$3, status=$4, completion_log=$5, completed_at=$6, updated_at=now()
+         WHERE id=$7 AND tenant_id=$8`,
+        [task.title, task.notes ?? null, task.dueAtUtc ?? null, task.status, task.completionLog ?? null, task.completedAtUtc ?? null, task.id, principal.tenantId]
+      );
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: task.status === "complete" && before.status !== "complete" ? "maintenance.completed" : "maintenance.updated",
+      siteId: task.siteId,
+      assetId: task.assetId,
+      entityType: "maintenance_task",
+      entityId: task.id,
+      beforeMetadata: { status: before.status },
+      afterMetadata: { status: task.status },
+      reason: `Maintenance task "${task.title}" updated.`
+    });
+
+    return task;
+  }
+
   reportTemplates() {
     return [
       "Operational report",
@@ -1741,6 +1860,13 @@ export class PlatformService implements OnModuleInit {
     if (!rule) throw new NotFoundException("Rule not found.");
     if (rule.tenantId !== tenantId) throw new ForbiddenException("Rule is outside tenant scope.");
     return rule;
+  }
+
+  private requireMaintenanceTask(taskId: string, tenantId: string): MaintenanceTask {
+    const task = this.maintenanceTasks.find((candidate) => candidate.id === taskId);
+    if (!task) throw new NotFoundException("Maintenance task not found.");
+    if (task.tenantId !== tenantId) throw new ForbiddenException("Maintenance task is outside tenant scope.");
+    return task;
   }
 
   private latestReadings(readings: TelemetryReading[]): TelemetryReading[] {
@@ -1929,9 +2055,11 @@ interface SiteRow {
   longitude: string | null;
   status: string;
   edge_status: string;
+  safety_limits: Site["safetyLimits"] | null;
 }
 
 function mapSiteRow(row: SiteRow): Site {
+  const safetyLimits = row.safety_limits && Object.keys(row.safety_limits).length > 0 ? row.safety_limits : undefined;
   return {
     id: row.id,
     tenantId: row.tenant_id,
@@ -1941,7 +2069,8 @@ function mapSiteRow(row: SiteRow): Site {
     latitude: row.latitude !== null ? Number(row.latitude) : undefined,
     longitude: row.longitude !== null ? Number(row.longitude) : undefined,
     status: row.status as Site["status"],
-    edgeStatus: row.edge_status as Site["edgeStatus"]
+    edgeStatus: row.edge_status as Site["edgeStatus"],
+    safetyLimits
   };
 }
 
@@ -2287,6 +2416,36 @@ function mapReportExportRow(row: ReportExportRow): ReportExportInput & { id: str
     status: row.export_status,
     requestedBy: row.requested_by,
     createdAtUtc: row.created_at
+  };
+}
+
+interface MaintenanceTaskRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  asset_id: string | null;
+  incident_id: string | null;
+  title: string;
+  notes: string | null;
+  due_at: string | null;
+  completed_at: string | null;
+  completion_log: string | null;
+  status: string;
+}
+
+function mapMaintenanceTaskRow(row: MaintenanceTaskRow): MaintenanceTask {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    assetId: row.asset_id ?? undefined,
+    incidentId: row.incident_id ?? undefined,
+    title: row.title,
+    notes: row.notes ?? undefined,
+    dueAtUtc: row.due_at ?? undefined,
+    completedAtUtc: row.completed_at ?? undefined,
+    completionLog: row.completion_log ?? undefined,
+    status: row.status as MaintenanceTask["status"]
   };
 }
 

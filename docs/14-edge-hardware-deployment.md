@@ -19,12 +19,12 @@ telemetry flowing into the platform.
 
 ## What does not exist yet (read this before you order cable)
 
-- **No real protocol drivers.** Nothing in this repo reads a physical Modbus, OPC-UA, or 4-20mA
-  device. `apps/edge-simulator` fakes the numbers. Writing an actual driver (Modbus RTU/TCP is the
-  most common starting point) is the next real engineering task — it just needs to publish
+- **Modbus TCP is covered, nothing else yet.** `apps/edge-driver-modbus` (`docs/16-modbus-driver.md`)
+  reads real Modbus TCP registers. OPC-UA, Modbus RTU (serial), and 4-20mA analog (via a Modbus
+  I/O module) still aren't implemented — the same principle applies to each: publish
   `TelemetryMessage` JSON (see `packages/shared`) to
   `greecon/{tenantId}/{siteId}/telemetry/{deviceId}` on the local broker; the edge-agent bridge
-  added here doesn't care where the message came from.
+  doesn't care which protocol produced it.
 - **Local safety evaluation isn't running on the edge yet.** `packages/gaia-core`'s safety checks
   currently only run inside the cloud API. The edge box does not independently block an unsafe
   command if it loses connectivity — the "operate safely during internet loss" goal in
@@ -144,14 +144,22 @@ sudo systemctl disable --now greecon-edge-simulator
 Leave it disabled for a live pilot — it publishes fake numbers under the same site/device IDs your
 real equipment will use, which would corrupt real readings if left running.
 
-## Step 7 — Wiring in a real driver, later
+## Step 7 — Wiring in a real device
 
-Whoever writes the actual Modbus/OPC-UA driver for the connected equipment just needs to publish
-the same `TelemetryMessage` JSON shape the simulator uses (see `apps/edge-simulator/src/index.ts`
-for the exact shape, and `packages/shared`'s `canonicalPoints` for valid `canonicalName` values)
-to `greecon/{tenantId}/{siteId}/telemetry/{deviceId}` on the local broker (`mqtt://127.0.0.1:1883`
-from this box). `greecon-edge-agent` doesn't need to change at all — it bridges whatever's on that
-topic, real or simulated.
+`apps/edge-driver-modbus` reads real Modbus TCP registers and publishes them to the same topic
+the simulator uses — see `docs/16-modbus-driver.md` for the config format. `install.sh` already
+builds and installs it as `greecon-edge-driver-modbus`, just not enabled by default (there's no
+`/etc/greecon/modbus.json` yet — write one for this site's real registers, referencing the
+device/point IDs from Sites/Assets/Devices/Points provisioning, then
+`systemctl enable --now greecon-edge-driver-modbus`).
+
+For anything other than Modbus TCP (OPC-UA, Modbus RTU over serial, an analog-to-Modbus I/O
+module), the same principle applies: publish the same `TelemetryMessage` JSON shape (see
+`apps/edge-simulator/src/index.ts` or `apps/edge-driver-modbus/src/index.ts` for the exact shape,
+and `packages/shared`'s `canonicalPoints` for valid `canonicalName` values) to
+`greecon/{tenantId}/{siteId}/telemetry/{deviceId}` on the local broker
+(`mqtt://127.0.0.1:1883` from this box). `greecon-edge-agent` doesn't need to change at all — it
+bridges whatever's on that topic.
 
 ## Troubleshooting
 

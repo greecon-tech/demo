@@ -37,17 +37,20 @@ Also in this phase, once real accounts exist:
 ## Phase 1 — Pilot reliability
 
 Everything already tracked in `docs/13-pilot-readiness.md`'s "Still open" section belongs here.
-Site/device/point provisioning CRUD — the item originally listed first here — is done (API-level;
-there's still no admin UI for it, see that doc's entry). What's left:
+Done so far: site/device/point provisioning CRUD, a real Modbus TCP driver
+(`apps/edge-driver-modbus`), per-site safety limits, and maintenance task mutation endpoints — all
+API-level and verified against real Postgres/MQTT; see that doc for details. There's still no
+admin UI for provisioning or safety-limit configuration. What's left:
 
-- Real field protocol drivers (Modbus/OPC-UA) — today only `apps/edge-simulator` exists.
-- Per-site configurable safety limits (currently one hardcoded `defaultSafetyLimits` for every
-  tenant and site).
-- Maintenance task mutation endpoints.
+- OPC-UA, Modbus RTU (serial), and analog (4-20mA via a Modbus I/O module) drivers — only Modbus
+  TCP exists so far.
 - Edge-to-cloud network reachability for a genuinely remote site (WireGuard/Tailscale tunnel,
-  documented in `docs/14-edge-hardware-deployment.md`).
+  documented in `docs/14-edge-hardware-deployment.md`) — this is an operational/infra step, not
+  code, but still needs doing per site before it's actually reachable.
 - Durable edge-side buffering (currently in-process memory in `apps/edge-agent`; loses backlog on
   a service restart during a long outage).
+- Manual command targets aren't filtered by role/site scope beyond permission — fine for a
+  single-site pilot, matters once there are multiple sites with different assigned operators.
 
 A platform is not "reliable" until a real site can run unattended for weeks without an engineer
 watching logs. That's the bar for calling this phase done, not "the demo works."
