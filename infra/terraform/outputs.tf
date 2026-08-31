@@ -3,6 +3,7 @@ output "secret_names" {
   value = {
     database_url = google_secret_manager_secret.database_url.secret_id
     mqtt_url     = google_secret_manager_secret.mqtt_url.secret_id
+    jwt_secret   = google_secret_manager_secret.jwt_secret.secret_id
   }
 }
 

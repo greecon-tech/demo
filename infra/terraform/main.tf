@@ -135,6 +135,30 @@ resource "google_secret_manager_secret" "mqtt_url" {
   depends_on = [google_project_service.required]
 }
 
+# Signs and verifies every login session (docs/07-security-and-rbac.md). Generated once here so
+# it's never typed or committed anywhere — the API reads it from Secret Manager at runtime, same
+# as the database URL below.
+resource "random_password" "jwt_secret" {
+  length  = 48
+  special = false
+}
+
+resource "google_secret_manager_secret" "jwt_secret" {
+  project   = var.project_id
+  secret_id = "greecon-jwt-secret"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.required]
+}
+
+resource "google_secret_manager_secret_version" "jwt_secret" {
+  secret      = google_secret_manager_secret.jwt_secret.id
+  secret_data = random_password.jwt_secret.result
+}
+
 # ---------------------------------------------------------------------------
 # Service accounts
 # ---------------------------------------------------------------------------
@@ -184,6 +208,13 @@ resource "google_project_iam_member" "api_runtime_sql_client" {
 resource "google_secret_manager_secret_iam_member" "api_runtime_secret_access" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.database_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.api_runtime.email}"
+}
+
+resource "google_secret_manager_secret_iam_member" "api_runtime_jwt_secret_access" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.jwt_secret.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.api_runtime.email}"
 }
@@ -259,6 +290,16 @@ resource "google_cloud_run_v2_service" "api" {
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.database_url.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "JWT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.jwt_secret.secret_id
             version = "latest"
           }
         }
