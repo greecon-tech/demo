@@ -29,9 +29,9 @@ Set `JWT_SECRET` as a Secret Manager entry alongside the database URL — never 
    terraform apply -var="project_id=<your-project-id>" -var="github_repository=<owner>/<repo>"
    ```
 
-   This provisions: required APIs, Artifact Registry, Cloud SQL (Postgres), the `DATABASE_URL` secret, three service accounts (a CI/CD deployer plus one runtime identity per Cloud Run service), the Workload Identity Federation pool/provider trusting only the named GitHub repository, and both Cloud Run services (seeded with a public placeholder image on the very first apply).
+   This provisions: required APIs, Artifact Registry, Cloud SQL (Postgres), the `DATABASE_URL` and `JWT_SECRET` secrets (the latter a Terraform-generated random value, never typed by hand), three service accounts (a CI/CD deployer plus one runtime identity per Cloud Run service), the Workload Identity Federation pool/provider trusting only the named GitHub repository, and both Cloud Run services (seeded with a public placeholder image on the very first apply, already wired to read both secrets at runtime).
 
-3. Take three values from `terraform output` and set them as **GitHub Actions repository variables** (Settings → Secrets and variables → Actions → Variables — these aren't secrets, so variables, not secrets):
+3. Take the values below from `terraform output` and set them as **GitHub Actions repository variables** (Settings → Secrets and variables → Actions → Variables — these aren't secrets, so variables, not secrets):
 
    | Terraform output | GitHub variable |
    | --- | --- |
@@ -50,7 +50,7 @@ Set `JWT_SECRET` as a Secret Manager entry alongside the database URL — never 
      npm run db:migrate -w @greecon/api
    ```
 
-   This runs both migration files in order (`apps/api/src/database/migrate.ts`). It's idempotent for schema/tenant/site/user rows (`CREATE TABLE IF NOT EXISTS`, `ON CONFLICT DO NOTHING`) but re-running it does insert a fresh batch of demo telemetry readings each time, so treat it as a one-time setup step, not something to wire into the deploy workflow.
+   This runs every migration file in order (`apps/api/src/database/migrate.ts`). It's idempotent for schema/tenant/site/user rows (`CREATE TABLE IF NOT EXISTS`, `ON CONFLICT DO NOTHING`) but re-running it does insert a fresh batch of demo telemetry readings each time, so treat it as a one-time setup step, not something to wire into the deploy workflow. For a real (non-demo) pilot, don't run `002_seed_demo.sql`'s demo accounts as-is — see the credential warning in `docs/11-deployment-railway.md`.
 6. `terraform output cloud_run_web_url` is the pilot URL.
 
 ## Production Requirements
