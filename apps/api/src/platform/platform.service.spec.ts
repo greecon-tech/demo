@@ -342,6 +342,15 @@ describe("PlatformService", () => {
     it("refuses to let an owner disable their own account", async () => {
       await expect(platform.updateUser(OWNER.userId, { status: "disabled" }, OWNER)).rejects.toThrow(ForbiddenException);
     });
+
+    it("lets an owner reset another user's password to a fresh temporary one, blocked for a viewer", async () => {
+      const { user } = await platform.createUser({ name: "Reset Target", email: "reset-target@greecon.earth", role: "operator" }, OWNER);
+
+      await expect(platform.resetUserPassword(user.id, VIEWER)).rejects.toThrow(ForbiddenException);
+
+      const { temporaryPassword } = await platform.resetUserPassword(user.id, OWNER);
+      expect(temporaryPassword.split("-")).toHaveLength(3);
+    });
   });
 
   describe("platform-admin tenant onboarding", () => {
@@ -377,6 +386,24 @@ describe("PlatformService", () => {
       await expect(
         platform.createTenant({ name: "Second", domain: "dup-client.example", ownerName: "B", ownerEmail: "b@dup-client.example" }, PLATFORM_ADMIN)
       ).rejects.toThrow();
+    });
+
+    it("lets a platform admin suspend and reactivate a client, blocking a non-admin from doing the same", async () => {
+      const { tenant } = await platform.createTenant(
+        { name: "Suspend Test Farm", domain: "suspend-test.example", ownerName: "Owner", ownerEmail: "owner@suspend-test.example" },
+        PLATFORM_ADMIN
+      );
+      expect(platform.isTenantActive(tenant.id)).toBe(true);
+
+      await expect(platform.updateTenantStatus(tenant.id, "suspended", OWNER)).rejects.toThrow(ForbiddenException);
+
+      const suspended = await platform.updateTenantStatus(tenant.id, "suspended", PLATFORM_ADMIN);
+      expect(suspended.status).toBe("suspended");
+      expect(platform.isTenantActive(tenant.id)).toBe(false);
+
+      const reactivated = await platform.updateTenantStatus(tenant.id, "active", PLATFORM_ADMIN);
+      expect(reactivated.status).toBe("active");
+      expect(platform.isTenantActive(tenant.id)).toBe(true);
     });
   });
 

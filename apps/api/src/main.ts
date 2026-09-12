@@ -1,11 +1,25 @@
 import "reflect-metadata";
 import helmet from "helmet";
-import { ValidationPipe } from "@nestjs/common";
+import { Logger, ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 
 async function bootstrap(): Promise<void> {
+  const logger = new Logger("Bootstrap");
+
+  // A missing DATABASE_URL is legitimate (local dev without Postgres, the in-memory-only fallback
+  // every domain in PlatformService has); a missing JWT_SECRET alongside a REAL database is not —
+  // it means login can never work on what's clearly meant to be a real deployment. Warn loudly at
+  // boot rather than letting that surface only when someone's first login attempt fails, so a
+  // misconfigured production deploy is obvious in the deploy logs immediately.
+  if (process.env.DATABASE_URL && !process.env.JWT_SECRET) {
+    logger.warn(
+      "DATABASE_URL is set but JWT_SECRET is not — this deployment has a real database but " +
+        "login will fail for every user until JWT_SECRET is configured (docs/07-security-and-rbac.md)."
+    );
+  }
+
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true
   });

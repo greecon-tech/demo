@@ -16,6 +16,11 @@ interface CreatedOwner {
   name: string;
 }
 
+export async function updateTenantStatusAction(tenantId: string, nextStatus: "active" | "suspended"): Promise<void> {
+  await apiMutate(`/platform-admin/tenants/${tenantId}/status`, "PATCH", { status: nextStatus });
+  revalidatePath("/platform");
+}
+
 export async function createTenantAction(
   name: string,
   domain: string,

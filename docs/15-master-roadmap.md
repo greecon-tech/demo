@@ -22,17 +22,21 @@ of "this specific person did this specific thing," which undermines the audit tr
 already goes to real effort to maintain everywhere else (every command, rule change, and alert
 acknowledgement records `requestedBy`/`userId` — from a header no one actually authenticated with).
 
-This phase is being implemented as part of this pass — see `docs/07-security-and-rbac.md` for the
-resulting design once it lands, and the "Real authentication" entry in `docs/13-pilot-readiness.md`
-for status.
+This phase has landed — see `docs/07-security-and-rbac.md` for the resulting design, and the "Real
+authentication" entry in `docs/13-pilot-readiness.md` for status.
 
-Also in this phase, once real accounts exist:
-- **Per-user audit identity** — every audit event, command, and rule change should trace to a real
-  logged-in user, not an asserted role.
-- **Password reset / invite flow** — there is currently no way to create a new user account at all
-  outside seed data; this is the natural follow-on once login itself works.
-- **Rate limiting on `/auth/login`** — brute-force protection, trivial to add once the endpoint
-  exists (a fixed-window counter keyed by IP + email is enough to start).
+Also in this phase, now done:
+- **Per-user audit identity** — every audit event, command, and rule change traces to a real
+  logged-in user (`requestedBy`/`userId` come from the verified JWT, never an asserted header).
+- **Invite / reset flow** — `POST /users` (Admin page) creates a new account with a real generated
+  temporary password; `POST /users/:userId/reset-password` resets an existing one the same way.
+  Still not *self-service* — that needs a real email-sending integration this deployment doesn't
+  have, so an admin does it on the user's behalf for now.
+- **Rate limiting on `/auth/login`** — 8 attempts/minute per caller via `@nestjs/throttler`
+  (in-memory; revisit with Redis only once there's more than one API replica).
+
+What's still open from this phase: every seeded *demo* account still shares one password
+(`003_auth.sql`) — fine for the demo tenant, not something to carry into a real client's account.
 
 ## Phase 1 — Pilot reliability
 
@@ -72,8 +76,11 @@ and deploy this":
   cross-tenant `isPlatformAdmin` flag, separate from any tenant-scoped role — see
   `docs/07-security-and-rbac.md`) onboards a real client with its own isolated owner account in
   one step, and `/platform` in the web app is a real screen for it, only visible to Greecon's own
-  platform administrators. See `docs/13-pilot-readiness.md` for the full writeup. Billing status
-  per client is still not modeled at all — that's the remaining piece here.
+  platform administrators. A client can also be suspended/reactivated from that same screen, and
+  suspension is actually enforced — blocked at login and on every request from an
+  already-issued token (`TenantStatusGuard`), not just a status label with nothing behind it. See
+  `docs/13-pilot-readiness.md` for the full writeup. Billing status/plan per client is still not
+  modeled at all — that's the remaining piece here.
 - **Formal audit/compliance posture.** The audit log itself is solid (immutable event trail,
   already dual-written to Postgres). What's missing for a compliance-conscious buyer: retention
   policy, log export in a standard format, and a documented data-handling policy (where telemetry

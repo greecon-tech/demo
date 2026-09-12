@@ -313,6 +313,76 @@ static-export paths.
 platform-admin status from the UI — both would need a "danger zone" section on `/platform` once
 there's a second real client to actually manage.
 
+### A pass through what "for real, not a demo" was still missing
+
+Requested explicitly once real clients started being onboardable: an expert audit of what a
+production system needs that a demo doesn't, focused on what's concretely buildable without a new
+external account/integration.
+
+**Gap 1 — nothing rate-limited `/auth/login`.** Anyone (or anything relaying through the public
+web app's login form) could attempt unlimited password guesses against any known email.
+
+**Fix:** `@nestjs/throttler`, wired globally (120 requests/minute/caller as a sane default across
+the whole API) and tightened hard on `POST /auth/login` specifically (8/minute/caller). In-memory
+storage — correct for the current single-instance deployment; would need a Redis-backed storage
+adapter (`@nestjs/throttler` supports one) the moment there's more than one API replica, since each
+replica would otherwise count independently.
+
+**Gap 2 — suspending a client did nothing.** The `/platform` "Suspend" button and
+`tenants.status` column existed (see the entry above) but nothing anywhere actually checked the
+value. A suspended client's users could keep working right up until their JWT's own 12h expiry,
+and even then could just log in again since login never checked tenant status either.
+
+**Fix:** `POST /auth/login`'s query now joins `tenants` and refuses a fresh token for anything but
+an `active` tenant; a new `TenantStatusGuard` (global, running after `PrincipalGuard`) rejects every
+other request from an already-issued token the moment its tenant is suspended, not just new logins.
+Platform admins are exempt from both checks — their own account lives in Greecon's internal tenant,
+which suspension is never aimed at.
+
+**Gap 3 — no way to recover a forgotten password.** There's still no self-service "forgot
+password" — that needs a real email-sending integration (a provider account, a verified sending
+domain) this deployment doesn't have, and standing one up wasn't something to do silently without
+asking. The concrete, buildable stopgap: `POST /users/:userId/reset-password` (Admin page only,
+`user:manage`) generates a fresh temporary password on the spot, shown once, same handling as
+creating a new user — an admin can now unblock a locked-out teammate in seconds instead of a
+console command.
+
+**Gap 4 — a misconfigured production deploy would fail silently.** If `DATABASE_URL` was set (a
+real deployment) but `JWT_SECRET` wasn't, the API would start up looking completely healthy and
+only reveal the problem the moment someone actually tried to log in — which, for a fresh
+deployment right before a demo or a pilot's first real day, is a bad time to discover it.
+
+**Fix:** a startup warning in `main.ts` logs loudly (not a hard crash — a real database with no
+`JWT_SECRET` yet is still a valid state mid-setup) the moment that specific combination is
+detected, so it shows up in Railway/GCP deploy logs immediately.
+
+**Verified:** 6 new tests (`TenantStatusGuard` unit tests for active/suspended/platform-admin-exempt;
+`PlatformService` tests for suspend → reactivate lifecycle and the non-platform-admin block;
+password-reset generates a real usable temporary password and is blocked for a viewer) — 37 tests
+passing total — plus full `tsc`/`next build` passes for both apps.
+
+**What this pass deliberately did NOT do, and why — these need a decision, not just code:**
+- **Real email delivery** (invite emails, password reset emails, alert notifications). Requires
+  picking and paying for a transactional email provider (Resend, Postmark, SES) and verifying a
+  sending domain — a real account/cost decision, not something to wire up unasked.
+- **Error monitoring / uptime alerting** (e.g. Sentry, a status-page ping). Same reasoning: needs a
+  third-party account. Worth doing before real client traffic depends on this running unattended —
+  see Phase 2's "SLA-grade observability" in `docs/15-master-roadmap.md`.
+- **Database backups.** Depends entirely on the Railway/GCP plan and settings, not application
+  code — confirm automatic backups are actually enabled on whichever Postgres is in production use
+  today, since this can't be verified or fixed from inside the repo.
+- **Terms of Service / Privacy Policy / a data-processing agreement for clients.** Once this
+  platform holds other companies' operational data, a real legal document (reviewed by an actual
+  lawyer, not drafted here) covering data ownership, retention, and liability is worth having before
+  onboarding a paying client. Flagged, not drafted — this isn't an engineering gap to close in code.
+- `npm audit` currently reports 10 known vulnerabilities across transitive dependencies (vitest's
+  dev-only mocker, `body-parser`/`qs`/`js-yaml` pulled in by Express/Swagger, `multer` pulled in by
+  `@nestjs/platform-express` despite no file-upload endpoint existing anywhere in this API). None
+  are in a code path this app actually exercises (no YAML parsing of untrusted input, no file
+  uploads), so none were patched blind this pass — `npm audit fix` hit an unrelated npm workspace
+  bug when attempted; worth a dedicated look with a working npm version rather than a rushed
+  workaround.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site
