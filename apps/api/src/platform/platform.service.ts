@@ -1,5 +1,7 @@
-import { ForbiddenException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
+import { ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "crypto";
+import * as bcrypt from "bcryptjs";
+import { generateTemporaryPassword } from "../common/generate-password";
 import {
   AlertMessage,
   Asset,
@@ -50,6 +52,17 @@ export interface CreateRuleInput {
 }
 
 export type UpdateRuleInput = Partial<Omit<CreateRuleInput, "siteId">>;
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface UpdateUserInput {
+  role?: UserRole;
+  status?: User["status"];
+}
 
 export interface CreateSiteInput {
   name: string;
@@ -233,6 +246,14 @@ export class PlatformService implements OnModuleInit {
     // database), all of this falls back to the hardcoded seed data below exactly as before.
     if (!this.db.isConfigured()) return;
 
+    const userRows = await this.db.query<UserRow>(
+      `SELECT u.id, u.tenant_id, u.email, u.name, u.status, m.role
+       FROM users u
+       JOIN memberships m ON m.user_id = u.id AND m.tenant_id = u.tenant_id
+       ORDER BY u.created_at ASC`
+    );
+    if (userRows.rows.length > 0) this.users = userRows.rows.map((row) => mapUserRow(row));
+
     // Sites/assets/devices/points hydrate first, in that dependency order, since commands below
     // looks up canonical point names via this.points — it must see the real hydrated points, not
     // the hardcoded seed array, or a pilot's real command history would show the wrong names.
@@ -280,7 +301,7 @@ export class PlatformService implements OnModuleInit {
     { id: DEMO_TENANT_ID, name: "Greecon Demo", domain: "demo.greecon.earth", status: "active" }
   ];
 
-  private readonly users: User[] = [
+  private users: User[] = [
     {
       id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
       tenantId: DEMO_TENANT_ID,
@@ -621,6 +642,99 @@ export class PlatformService implements OnModuleInit {
 
   listUsers(principal: Principal): User[] {
     return this.scope(this.users, principal.tenantId);
+  }
+
+  async createUser(input: CreateUserInput, principal: Principal): Promise<{ user: User; temporaryPassword: string }> {
+    if (!hasPermission(principal.role, "user:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const email = input.email.trim().toLowerCase();
+    if (this.users.some((existing) => existing.tenantId === principal.tenantId && existing.email.toLowerCase() === email)) {
+      throw new ConflictException("A user with this email already exists in this tenant.");
+    }
+
+    // There is no self-service reset flow yet (docs/15-master-roadmap.md, Phase 0) — the
+    // temporary password is returned once, here, and never stored or logged anywhere else.
+    // Whoever creates the account is responsible for passing it to the new user out of band.
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+    const user: User = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      email,
+      name: input.name,
+      role: input.role,
+      status: "active"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO users (id, tenant_id, email, name, status, password_hash) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [user.id, user.tenantId, user.email, user.name, user.status, passwordHash]
+      );
+      await this.db.query(`INSERT INTO memberships (id, tenant_id, user_id, role) VALUES ($1,$2,$3,$4)`, [
+        randomUUID(),
+        user.tenantId,
+        user.id,
+        user.role
+      ]);
+    }
+
+    this.users.push(user);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "user.created",
+      entityType: "user",
+      entityId: user.id,
+      afterMetadata: { email: user.email, role: user.role },
+      reason: `User "${user.email}" created with role ${user.role}.`
+    });
+
+    return { user, temporaryPassword };
+  }
+
+  async updateUser(userId: string, input: UpdateUserInput, principal: Principal): Promise<User> {
+    if (!hasPermission(principal.role, "user:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const user = this.requireUser(userId, principal.tenantId);
+    if (user.id === principal.userId && input.status === "disabled") {
+      throw new ForbiddenException("You cannot disable your own account.");
+    }
+    if (user.id === principal.userId && input.role && input.role !== user.role) {
+      throw new ForbiddenException("You cannot change your own role.");
+    }
+
+    const nextRole = input.role ?? user.role;
+    const nextStatus = input.status ?? user.status;
+
+    if (this.db.isConfigured()) {
+      if (input.role) {
+        await this.db.query(`UPDATE memberships SET role = $1 WHERE tenant_id = $2 AND user_id = $3`, [nextRole, principal.tenantId, user.id]);
+      }
+      if (input.status) {
+        await this.db.query(`UPDATE users SET status = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3`, [nextStatus, user.id, principal.tenantId]);
+      }
+    }
+
+    user.role = nextRole;
+    user.status = nextStatus;
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "user.updated",
+      entityType: "user",
+      entityId: user.id,
+      afterMetadata: { role: user.role, status: user.status },
+      reason: `User "${user.email}" updated (role: ${user.role}, status: ${user.status}).`
+    });
+
+    return user;
   }
 
   overview(principal: Principal) {
@@ -1827,6 +1941,13 @@ export class PlatformService implements OnModuleInit {
     return tenant;
   }
 
+  private requireUser(userId: string, tenantId: string): User {
+    const user = this.users.find((candidate) => candidate.id === userId);
+    if (!user) throw new NotFoundException("User not found.");
+    if (user.tenantId !== tenantId) throw new ForbiddenException("User is outside tenant scope.");
+    return user;
+  }
+
   private requireSite(siteId: string, tenantId: string): Site {
     const site = this.sites.find((candidate) => candidate.id === siteId);
     if (!site) throw new NotFoundException("Site not found.");
@@ -2043,6 +2164,26 @@ function devicePlacementMetadata(device: Device): Record<string, unknown> {
   if (device.positionY !== undefined) metadata.positionY = device.positionY;
   if (device.placementNote !== undefined) metadata.placementNote = device.placementNote;
   return metadata;
+}
+
+interface UserRow {
+  id: string;
+  tenant_id: string;
+  email: string;
+  name: string;
+  status: string;
+  role: string;
+}
+
+function mapUserRow(row: UserRow): User {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    email: row.email,
+    name: row.name,
+    role: row.role as UserRole,
+    status: row.status as User["status"]
+  };
 }
 
 interface SiteRow {
