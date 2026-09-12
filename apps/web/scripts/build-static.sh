@@ -16,6 +16,8 @@
 #   components/Shell.tsx    — imports the logout Server Action and reads the real session. Shell
 #     is used by every single page, so this one import would otherwise break the entire export,
 #     not just the routes that obviously need it.
+#   admin/page.tsx          — imports CreateUserForm/CreateSiteForm and binds the user role/status
+#     Server Actions directly (see admin/actions.ts).
 set -e
 # Disables pathname expansion for the rest of the script: one of the paths below literally
 # contains "[siteId]", which the shell would otherwise try to glob-match as a one-character
@@ -29,6 +31,7 @@ SWAPPED="
 src/app/automation/page.tsx
 src/app/sites/[siteId]/page.tsx
 src/app/login/page.tsx
+src/app/admin/page.tsx
 src/components/Shell.tsx
 "
 

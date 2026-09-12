@@ -38,9 +38,11 @@ Also in this phase, once real accounts exist:
 
 Everything already tracked in `docs/13-pilot-readiness.md`'s "Still open" section belongs here.
 Done so far: site/device/point provisioning CRUD, a real Modbus TCP driver
-(`apps/edge-driver-modbus`), per-site safety limits, and maintenance task mutation endpoints — all
-API-level and verified against real Postgres/MQTT; see that doc for details. There's still no
-admin UI for provisioning or safety-limit configuration. What's left:
+(`apps/edge-driver-modbus`), per-site safety limits, maintenance task mutation endpoints, and a
+real Admin Center (create/manage users with real temporary passwords, create sites) — all
+API-level changes verified against real Postgres/MQTT; see `docs/13-pilot-readiness.md` for
+details. There's still no admin UI for device/asset/point provisioning or safety-limit
+configuration specifically. What's left:
 
 - OPC-UA, Modbus RTU (serial), and analog (4-20mA via a Modbus I/O module) drivers — only Modbus
   TCP exists so far.

@@ -97,11 +97,10 @@ the audit event *before* the delete, so the foreign key is satisfied at insert t
 nulled out, exactly as it does for a rule, asset, device, or point deletion (none of which had
 this problem, since none of them reference their own row as the audit event's site).
 
-**How to extend further:** there's still no admin UI for any of this — everything above was
-verified directly against the API (curl and Postgres). Building the actual "add a site/device"
-forms in the web app, reusing the Server Actions + static-export-twin pattern already established
-for rules and manual control, is the natural next step once this is wired into a real onboarding
-flow.
+**Update:** the Admin page (`/admin`) now has a real "Create site" form wired to this API — see
+"There was no way to create a real user or site without a console command" below. Device/asset/
+point provisioning still has no dedicated form yet (only the API); site creation was prioritized
+first since it's the one every new pilot onboarding needs immediately.
 
 ### There was no real authentication at all
 
@@ -238,6 +237,43 @@ pumps — that needs a small amount of state (recent command history per point) 
 `evaluateCommandSafety` doesn't currently have access to. The straightforward way to add it:
 extend `SafetyContext` with a `recentCommands` list (mirroring how `lastPumpStoppedAtUtc` is
 threaded through today) and add a check parallel to the pump's rest-time logic.
+
+### There was no way to create a real user or site without a console command
+
+**Gap:** the only way to onboard a real pilot user or a real site was a direct database console
+command (bcrypt-hashing a password by hand, inserting rows) — not something the platform's owner
+could do themselves. `listUsers()` in `PlatformService` also never read from Postgres at all; it
+returned a hardcoded five-user demo array regardless of what was actually in the `users` table, so
+even a user created by hand in the database wouldn't show up in the Admin page.
+
+**Fix:**
+- `PlatformService` now hydrates `users` from Postgres on boot (joined with `memberships` for
+  role), the same dual-write pattern as sites/assets/devices/points.
+- `POST /users` (`user:manage`) creates a real user: generates a random temporary password,
+  bcrypt-hashes it, inserts the `users` + `memberships` rows, and returns the plaintext password
+  exactly once in the response — it is never stored or logged anywhere else, matching the same
+  one-time-disclosure handling used for every temporary password issued by hand so far.
+- `PATCH /users/:userId` (`user:manage`) changes a user's role or active/disabled status. An owner
+  or admin cannot disable their own account or change their own role through this endpoint — both
+  throw `ForbiddenException` — so a tenant can't accidentally lock itself out.
+- The Admin page (`/admin`) now has a "Create user" form (shows the generated password once, in a
+  clearly-labeled one-time notice) and a "Create site" form, plus an inline role selector and
+  enable/disable button per row in the Users table. All of it uses real Server Actions against the
+  live API — no more console commands for routine onboarding.
+- The static GitHub Pages export gets a `page.static.tsx` twin (read-only, no forms) since Server
+  Actions can't exist in that build at all — same swap mechanism `build-static.sh` already used for
+  the login page, Shell, and manual control.
+
+**Verified:** 4 new `PlatformService` unit tests (viewer blocked from creating a user, full
+create → promote-role → disable lifecycle, duplicate-email rejected, self-disable blocked) plus a
+full `next build` of both the SSR and static-export paths.
+
+**How to extend further:** device/asset/point provisioning still has no dedicated form (API only,
+per the entry above). There is still no password reset flow (`docs/15-master-roadmap.md`, Phase
+0) — a disabled-then-re-enabled user keeps their old password, and a user who forgets their
+password has no self-service way to get a new one; an admin currently has to create a fresh
+temporary password for them by hand through a future "reset password" action on this same page
+(not yet built).
 
 ## Still open
 

@@ -305,6 +305,37 @@ describe("PlatformService", () => {
     });
   });
 
+  describe("user provisioning", () => {
+    it("blocks a viewer from creating a user", async () => {
+      await expect(platform.createUser({ name: "New Person", email: "new.person@greecon.earth", role: "operator" }, VIEWER)).rejects.toThrow(
+        ForbiddenException
+      );
+    });
+
+    it("creates a user with a real temporary password, then lets an owner change their role and status", async () => {
+      const { user, temporaryPassword } = await platform.createUser({ name: "New Person", email: "New.Person@greecon.earth", role: "operator" }, OWNER);
+      expect(user.email).toBe("new.person@greecon.earth");
+      expect(user.status).toBe("active");
+      expect(temporaryPassword.split("-")).toHaveLength(3);
+      expect(platform.listUsers(OWNER).some((candidate) => candidate.id === user.id)).toBe(true);
+
+      const promoted = await platform.updateUser(user.id, { role: "admin" }, OWNER);
+      expect(promoted.role).toBe("admin");
+
+      const disabled = await platform.updateUser(user.id, { status: "disabled" }, OWNER);
+      expect(disabled.status).toBe("disabled");
+    });
+
+    it("refuses to create a second user with the same email in the same tenant", async () => {
+      await platform.createUser({ name: "Dup", email: "dup@greecon.earth", role: "viewer" }, OWNER);
+      await expect(platform.createUser({ name: "Dup Again", email: "dup@greecon.earth", role: "viewer" }, OWNER)).rejects.toThrow();
+    });
+
+    it("refuses to let an owner disable their own account", async () => {
+      await expect(platform.updateUser(OWNER.userId, { status: "disabled" }, OWNER)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe("per-site safety limits", () => {
     it("applies a tighter site-specific pressure limit instead of the global default", async () => {
       // Seed pressure for this site is 2.8 bar — comfortably under the 5.5 bar global default,

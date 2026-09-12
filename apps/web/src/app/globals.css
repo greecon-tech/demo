@@ -807,6 +807,32 @@ tbody tr:hover {
   font-size: 0.85rem;
 }
 
+.user-row-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.credential-notice {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.credential-notice p {
+  margin: 4px 0 0;
+}
+
+.credential-notice__value {
+  font-family: ui-monospace, monospace;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-top: 8px !important;
+}
+
 .dialog {
   position: fixed;
   inset: 0;
