@@ -67,11 +67,13 @@ and deploy this":
   role-header trust model. A provisioned device should carry its own credential (a per-gateway
   signed token or mTLS client certificate, checked against a table of registered gateways) so
   compromising one site's edge box doesn't grant broader access than that site.
-- **Tenant-level administration.** Today there's one hardcoded demo tenant. Real multi-tenant
-  onboarding (tenant creation, billing status, per-tenant user management UI) needs to exist for
-  this to be sellable as a SaaS product rather than a bespoke deployment per customer.
-  `tenants.controller.ts` and the schema already model tenants; there's no admin flow to create
-  one.
+- **Tenant-level administration — onboarding done, billing still open.** There was one hardcoded
+  demo tenant and no way to create another; now `POST /platform-admin/tenants` (gated on a new
+  cross-tenant `isPlatformAdmin` flag, separate from any tenant-scoped role — see
+  `docs/07-security-and-rbac.md`) onboards a real client with its own isolated owner account in
+  one step, and `/platform` in the web app is a real screen for it, only visible to Greecon's own
+  platform administrators. See `docs/13-pilot-readiness.md` for the full writeup. Billing status
+  per client is still not modeled at all — that's the remaining piece here.
 - **Formal audit/compliance posture.** The audit log itself is solid (immutable event trail,
   already dual-written to Postgres). What's missing for a compliance-conscious buyer: retention
   policy, log export in a standard format, and a documented data-handling policy (where telemetry

@@ -16,6 +16,7 @@ export async function Shell({ children, title, subtitle }: { children: ReactNode
   const session = await getSession();
   const role = session?.user.role ?? DEMO_ROLE;
   const roleLabel = titleCase(role);
+  const isPlatformAdmin = session?.user.isPlatformAdmin ?? false;
 
   return (
     <div className="app-shell">
@@ -24,7 +25,7 @@ export async function Shell({ children, title, subtitle }: { children: ReactNode
           <img src={`${process.env.NEXT_BASE_PATH ?? ""}/greecon-logo.svg`} alt="" width="22" height="31" />
           <span>Greecon</span>
         </Link>
-        <Nav role={role} />
+        <Nav role={role} isPlatformAdmin={isPlatformAdmin} />
         <div className="sidebar-foot">
           <p>{GREECON_COMPANY}</p>
           <span>{GREECON_DOMAIN}</span>

@@ -275,6 +275,44 @@ password has no self-service way to get a new one; an admin currently has to cre
 temporary password for them by hand through a future "reset password" action on this same page
 (not yet built).
 
+### There was no way to onboard a second client — only one hardcoded tenant existed
+
+**Gap:** the entire platform ran against a single hardcoded demo tenant (`DEMO_TENANT_ID`). The
+`Admin` page and everything in it (users, sites) is correctly scoped to the caller's own tenant —
+that isolation was already real — but there was no way to create a *second*, separate client
+account at all, hardcoded or otherwise. `tenants.controller.ts` only ever listed the caller's own
+tenant. This mattered the moment "the platform" stopped meaning "our one pilot farm" and started
+meaning "a product other clients will also run on."
+
+**Fix:** a new `isPlatformAdmin` flag on `users` (migration `005_platform_admin.sql`), deliberately
+kept separate from the tenant-scoped `role`/`Permission` system everything else in
+`docs/07-security-and-rbac.md` uses — a client's own owner role must never imply access to another
+client's data, so this is a second, orthogonal axis, checked by its own `PlatformAdminGuard`
+rather than folded into `hasPermission`. It rides in the same signed JWT as everything else
+(`isPlatformAdmin` claim), so it's tamper-proof the same way the rest of a session is. Only
+`eridon.manuka@greecon.earth` has it set, by the migration itself.
+
+- `POST /platform-admin/tenants` creates a brand new tenant plus its first owner user in one step
+  — same one-time-password handling as `POST /users` — fully isolated from every other tenant's
+  data (separate `tenant_id` on every row from the start).
+- `GET /platform-admin/tenants` lists every client with live user/site counts, for a platform
+  admin only.
+- `/platform` in the web app is the real screen for this: an "Onboard a new client" form and a
+  table of every client. It only appears in the sidebar (and only actually renders instead of a
+  404) for a session with `isPlatformAdmin: true` — everyone else, including a client's own owner,
+  never sees it exists.
+
+**Verified:** 3 new `PlatformService` unit tests (non-platform-admin owner blocked from both
+listing and creating tenants; a platform admin can onboard a new client whose data stays
+completely invisible to `listUsers()` called with the original demo tenant's own principal;
+duplicate domain rejected) — 32 tests passing total — plus a full `next build` of both the SSR and
+static-export paths.
+
+**How to extend further:** there's no billing/plan status per client yet (`status` is just
+`active`/`suspended` with nothing wired to actually suspend one), and no way to remove/deactivate
+platform-admin status from the UI — both would need a "danger zone" section on `/platform` once
+there's a second real client to actually manage.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site

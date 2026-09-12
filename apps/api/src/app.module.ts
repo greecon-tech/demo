@@ -12,6 +12,7 @@ import { EdgeSyncModule } from "./modules/edge-sync/edge-sync.module";
 import { HealthModule } from "./modules/health/health.module";
 import { IncidentsModule } from "./modules/incidents/incidents.module";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
+import { PlatformAdminModule } from "./modules/platform-admin/platform-admin.module";
 import { PointsModule } from "./modules/points/points.module";
 import { ReportsModule } from "./modules/reports/reports.module";
 import { RulesModule } from "./modules/rules/rules.module";
@@ -35,6 +36,7 @@ import { PlatformModule } from "./platform/platform.module";
     SitesModule,
     AssetsModule,
     DevicesModule,
+    PlatformAdminModule,
     PointsModule,
     TelemetryModule,
     DerivedStatesModule,

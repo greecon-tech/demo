@@ -53,6 +53,13 @@ export interface CreateRuleInput {
 
 export type UpdateRuleInput = Partial<Omit<CreateRuleInput, "siteId">>;
 
+export interface CreateTenantInput {
+  name: string;
+  domain: string;
+  ownerName: string;
+  ownerEmail: string;
+}
+
 export interface CreateUserInput {
   name: string;
   email: string;
@@ -246,6 +253,9 @@ export class PlatformService implements OnModuleInit {
     // database), all of this falls back to the hardcoded seed data below exactly as before.
     if (!this.db.isConfigured()) return;
 
+    const tenantRows = await this.db.query<TenantRow>("SELECT * FROM tenants ORDER BY created_at ASC");
+    if (tenantRows.rows.length > 0) this.tenants = tenantRows.rows.map((row) => mapTenantRow(row));
+
     const userRows = await this.db.query<UserRow>(
       `SELECT u.id, u.tenant_id, u.email, u.name, u.status, m.role
        FROM users u
@@ -297,7 +307,7 @@ export class PlatformService implements OnModuleInit {
     if (maintenanceRows.rows.length > 0) this.maintenanceTasks = maintenanceRows.rows.map((row) => mapMaintenanceTaskRow(row));
   }
 
-  private readonly tenants: Tenant[] = [
+  private tenants: Tenant[] = [
     { id: DEMO_TENANT_ID, name: "Greecon Demo", domain: "demo.greecon.earth", status: "active" }
   ];
 
@@ -638,6 +648,80 @@ export class PlatformService implements OnModuleInit {
 
   listTenants(principal: Principal): Tenant[] {
     return this.tenants.filter((tenant) => tenant.id === principal.tenantId);
+  }
+
+  // Cross-tenant — every client, not just the caller's own. Gated on isPlatformAdmin, not a
+  // tenant-scoped role, since this is Greecon staff managing clients, not a client managing
+  // itself (see docs/15-master-roadmap.md, Phase 2 "Tenant-level administration").
+  listAllTenants(principal: Principal): Array<Tenant & { userCount: number; siteCount: number }> {
+    if (!principal.isPlatformAdmin) {
+      throw new ForbiddenException("This action requires Greecon platform-administrator access.");
+    }
+
+    return this.tenants.map((tenant) => ({
+      ...tenant,
+      userCount: this.users.filter((user) => user.tenantId === tenant.id).length,
+      siteCount: this.sites.filter((site) => site.tenantId === tenant.id).length
+    }));
+  }
+
+  async createTenant(input: CreateTenantInput, principal: Principal): Promise<{ tenant: Tenant; owner: User; temporaryPassword: string }> {
+    if (!principal.isPlatformAdmin) {
+      throw new ForbiddenException("This action requires Greecon platform-administrator access.");
+    }
+
+    const domain = input.domain.trim().toLowerCase();
+    if (this.tenants.some((existing) => existing.domain.toLowerCase() === domain)) {
+      throw new ConflictException("A client with this domain already exists.");
+    }
+
+    const tenant: Tenant = {
+      id: randomUUID(),
+      name: input.name,
+      domain,
+      status: "active"
+    };
+
+    const ownerEmail = input.ownerEmail.trim().toLowerCase();
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    const owner: User = {
+      id: randomUUID(),
+      tenantId: tenant.id,
+      email: ownerEmail,
+      name: input.ownerName,
+      role: "owner",
+      status: "active"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`INSERT INTO tenants (id, name, domain, status) VALUES ($1,$2,$3,$4)`, [tenant.id, tenant.name, tenant.domain, tenant.status]);
+      await this.db.query(
+        `INSERT INTO users (id, tenant_id, email, name, status, password_hash) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [owner.id, owner.tenantId, owner.email, owner.name, owner.status, passwordHash]
+      );
+      await this.db.query(`INSERT INTO memberships (id, tenant_id, user_id, role) VALUES ($1,$2,$3,$4)`, [
+        randomUUID(),
+        tenant.id,
+        owner.id,
+        owner.role
+      ]);
+    }
+
+    this.tenants.push(tenant);
+    this.users.push(owner);
+
+    await this.recordAudit({
+      tenantId: tenant.id,
+      userId: principal.userId,
+      eventType: "tenant.created",
+      entityType: "tenant",
+      entityId: tenant.id,
+      afterMetadata: { name: tenant.name, domain: tenant.domain, ownerEmail },
+      reason: `Client "${tenant.name}" onboarded by platform administrator.`
+    });
+
+    return { tenant, owner, temporaryPassword };
   }
 
   listUsers(principal: Principal): User[] {
@@ -2164,6 +2248,22 @@ function devicePlacementMetadata(device: Device): Record<string, unknown> {
   if (device.positionY !== undefined) metadata.positionY = device.positionY;
   if (device.placementNote !== undefined) metadata.placementNote = device.placementNote;
   return metadata;
+}
+
+interface TenantRow {
+  id: string;
+  name: string;
+  domain: string;
+  status: string;
+}
+
+function mapTenantRow(row: TenantRow): Tenant {
+  return {
+    id: row.id,
+    name: row.name,
+    domain: row.domain,
+    status: row.status as Tenant["status"]
+  };
 }
 
 interface UserRow {

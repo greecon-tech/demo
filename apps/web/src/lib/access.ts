@@ -10,3 +10,12 @@ export function requirePermission(role: UserRole, permission: Permission): void 
     notFound();
   }
 }
+
+/** Platform-admin status is cross-tenant (see apps/api/src/common/principal.ts) and orthogonal to
+ * the tenant-scoped role/permission model above, so it needs its own gate rather than a
+ * Permission entry — a tenant's own owner/admin role should never imply access to other tenants. */
+export function requirePlatformAdmin(isPlatformAdmin: boolean): void {
+  if (!isPlatformAdmin) {
+    notFound();
+  }
+}
