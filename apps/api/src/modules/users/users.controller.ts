@@ -26,4 +26,10 @@ export class UsersController {
   update(@Param("userId") userId: string, @Body() body: UpdateUserDto, @Req() request: RequestWithPrincipal) {
     return this.platform.updateUser(userId, body, request.principal);
   }
+
+  @Post(":userId/reset-password")
+  @RequirePermissions("user:manage")
+  resetPassword(@Param("userId") userId: string, @Req() request: RequestWithPrincipal) {
+    return this.platform.resetUserPassword(userId, request.principal);
+  }
 }

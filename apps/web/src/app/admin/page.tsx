@@ -7,6 +7,7 @@ import { Shell } from "../../components/Shell";
 import { requirePermission } from "../../lib/access";
 import { apiGet, DEMO_ROLE } from "../../lib/api";
 import { getSession } from "../../lib/session";
+import { ResetPasswordButton } from "../../components/ResetPasswordButton";
 import { updateUserRoleAction, updateUserStatusAction } from "./actions";
 
 interface Site {
@@ -96,6 +97,11 @@ export default async function AdminPage() {
                     </button>
                   </form>
                 )
+            },
+            {
+              key: "id",
+              label: "Password",
+              render: (user) => <ResetPasswordButton userId={user.id} />
             }
           ]}
         />

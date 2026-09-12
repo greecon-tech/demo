@@ -41,6 +41,16 @@ export async function updateUserStatusAction(userId: string, nextStatus: "active
   revalidatePath("/admin");
 }
 
+export async function resetUserPasswordAction(userId: string): Promise<{ error?: string; temporaryPassword?: string }> {
+  try {
+    const result = await apiMutate<{ temporaryPassword: string }>(`/users/${userId}/reset-password`, "POST");
+    revalidatePath("/admin");
+    return { temporaryPassword: result.temporaryPassword };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to reset password." };
+  }
+}
+
 export async function createSiteAction(formData: FormData): Promise<void> {
   const name = formData.get("name");
   const type = formData.get("type");

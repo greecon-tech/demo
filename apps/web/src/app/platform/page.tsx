@@ -5,6 +5,7 @@ import { Shell } from "../../components/Shell";
 import { requirePlatformAdmin } from "../../lib/access";
 import { apiGet } from "../../lib/api";
 import { getSession } from "../../lib/session";
+import { updateTenantStatusAction } from "./actions";
 
 interface TenantSummary {
   id: string;
@@ -38,9 +39,19 @@ export default async function PlatformAdminPage() {
           columns={[
             { key: "name", label: "Client" },
             { key: "domain", label: "Domain" },
-            { key: "status", label: "Status" },
             { key: "userCount", label: "Users" },
-            { key: "siteCount", label: "Sites" }
+            { key: "siteCount", label: "Sites" },
+            {
+              key: "status",
+              label: "Status",
+              render: (tenant) => (
+                <form action={updateTenantStatusAction.bind(null, tenant.id, tenant.status === "active" ? "suspended" : "active")}>
+                  <button type="submit" className={tenant.status === "active" ? "button-ghost" : undefined}>
+                    {tenant.status === "active" ? "Active — Suspend" : "Suspended — Reactivate"}
+                  </button>
+                </form>
+              )
+            }
           ]}
         />
       </Section>

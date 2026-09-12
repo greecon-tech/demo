@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { PlatformAdminGuard } from "../../common/platform-admin.guard";
 import { RequestWithPrincipal } from "../../common/principal";
 import { PlatformService } from "../../platform/platform.service";
 import { CreateTenantDto } from "./create-tenant.dto";
+import { UpdateTenantStatusDto } from "./update-tenant-status.dto";
 
 // Manages Greecon's clients (tenants) themselves — separate from the per-tenant Admin page
 // (/admin, apps/web/src/app/admin), which manages users/sites within one client's own account.
@@ -20,5 +21,10 @@ export class PlatformAdminController {
   @Post("tenants")
   createTenant(@Body() body: CreateTenantDto, @Req() request: RequestWithPrincipal) {
     return this.platform.createTenant(body, request.principal);
+  }
+
+  @Patch("tenants/:tenantId/status")
+  updateTenantStatus(@Param("tenantId") tenantId: string, @Body() body: UpdateTenantStatusDto, @Req() request: RequestWithPrincipal) {
+    return this.platform.updateTenantStatus(tenantId, body.status, request.principal);
   }
 }

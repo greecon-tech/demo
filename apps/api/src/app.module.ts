@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AuditModule } from "./modules/audit/audit.module";
 import { AlertsModule } from "./modules/alerts/alerts.module";
 import { AssetsModule } from "./modules/assets/assets.module";
@@ -22,12 +23,21 @@ import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
 import { PrincipalGuard } from "./common/principal.guard";
 import { RbacGuard } from "./common/rbac.guard";
+import { TenantStatusGuard } from "./common/tenant-status.guard";
 import { DatabaseModule } from "./database/database.module";
 import { PlatformModule } from "./platform/platform.module";
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // A generous global default (defense in depth for every endpoint) plus a much stricter
+    // override on POST /auth/login specifically (see auth.controller.ts's @Throttle) — brute
+    // force protection promised in docs/15-master-roadmap.md, Phase 0. In-memory storage is fine
+    // for a single-instance pilot deployment; revisit with a Redis storage adapter only once
+    // there's more than one API replica running.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: "default", ttl: 60_000, limit: 120 }]
+    }),
     DatabaseModule,
     PlatformModule,
     AuthModule,
@@ -51,8 +61,10 @@ import { PlatformModule } from "./platform/platform.module";
     HealthModule
   ],
   providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: PrincipalGuard },
-    { provide: APP_GUARD, useClass: RbacGuard }
+    { provide: APP_GUARD, useClass: RbacGuard },
+    { provide: APP_GUARD, useClass: TenantStatusGuard }
   ]
 })
 export class AppModule {}

@@ -780,6 +780,35 @@ export class PlatformService implements OnModuleInit {
     return { user, temporaryPassword };
   }
 
+  // Stands in for a self-service "forgot password" flow, which would need a real email-sending
+  // integration this deployment doesn't have yet (docs/15-master-roadmap.md, Phase 0) — an admin
+  // generates a fresh temporary password on the user's behalf and passes it along out of band,
+  // same one-time-disclosure handling as createUser.
+  async resetUserPassword(userId: string, principal: Principal): Promise<{ user: User; temporaryPassword: string }> {
+    if (!hasPermission(principal.role, "user:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const user = this.requireUser(userId, principal.tenantId);
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [passwordHash, user.id]);
+    }
+
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "user.password_reset",
+      entityType: "user",
+      entityId: user.id,
+      reason: `Password reset for "${user.email}" by ${principal.email}.`
+    });
+
+    return { user, temporaryPassword };
+  }
+
   async updateUser(userId: string, input: UpdateUserInput, principal: Principal): Promise<User> {
     if (!hasPermission(principal.role, "user:manage")) {
       throw new ForbiddenException("Action blocked by access policy.");
@@ -2022,6 +2051,39 @@ export class PlatformService implements OnModuleInit {
   private requireTenant(tenantId: string): Tenant {
     const tenant = this.tenants.find((candidate) => candidate.id === tenantId);
     if (!tenant) throw new ForbiddenException("Tenant is not available in this context.");
+    return tenant;
+  }
+
+  // Used by TenantStatusGuard on every authenticated request, not just this one lookup path —
+  // deliberately tolerant of an unknown tenantId (returns false) rather than throwing, since a
+  // guard rejecting with the wrong exception type is worse than it just failing closed.
+  isTenantActive(tenantId: string): boolean {
+    return this.tenants.find((candidate) => candidate.id === tenantId)?.status === "active";
+  }
+
+  async updateTenantStatus(tenantId: string, status: Tenant["status"], principal: Principal): Promise<Tenant> {
+    if (!principal.isPlatformAdmin) {
+      throw new ForbiddenException("This action requires Greecon platform-administrator access.");
+    }
+
+    const tenant = this.tenants.find((candidate) => candidate.id === tenantId);
+    if (!tenant) throw new NotFoundException("Client not found.");
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`UPDATE tenants SET status = $1, updated_at = now() WHERE id = $2`, [status, tenantId]);
+    }
+    tenant.status = status;
+
+    await this.recordAudit({
+      tenantId,
+      userId: principal.userId,
+      eventType: status === "suspended" ? "tenant.suspended" : "tenant.reactivated",
+      entityType: "tenant",
+      entityId: tenantId,
+      afterMetadata: { status },
+      reason: `Client "${tenant.name}" ${status === "suspended" ? "suspended" : "reactivated"} by a Greecon platform administrator.`
+    });
+
     return tenant;
   }
 

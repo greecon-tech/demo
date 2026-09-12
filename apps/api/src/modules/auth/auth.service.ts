@@ -13,6 +13,7 @@ interface UserCredentialRow {
   password_hash: string | null;
   role: string;
   is_platform_admin: boolean;
+  tenant_status: string;
 }
 
 export interface LoginResult {
@@ -45,9 +46,10 @@ export class AuthService {
     }
 
     const result = await this.db.query<UserCredentialRow>(
-      `SELECT u.id, u.tenant_id, u.email, u.name, u.password_hash, u.is_platform_admin, m.role
+      `SELECT u.id, u.tenant_id, u.email, u.name, u.password_hash, u.is_platform_admin, m.role, t.status AS tenant_status
        FROM users u
        JOIN memberships m ON m.user_id = u.id AND m.tenant_id = u.tenant_id
+       JOIN tenants t ON t.id = u.tenant_id
        WHERE lower(u.email) = lower($1) AND u.status = 'active'
        LIMIT 1`,
       [email]
@@ -64,8 +66,17 @@ export class AuthService {
       throw new UnauthorizedException("Invalid email or password.");
     }
 
-    const role: UserRole = userRoles.includes(row.role as UserRole) ? (row.role as UserRole) : "viewer";
     const isPlatformAdmin = row.is_platform_admin === true;
+    // A suspended client's users must not even get a fresh token — TenantStatusGuard (see
+    // apps/api/src/common/tenant-status.guard.ts) also rejects an already-issued one on every
+    // subsequent request, but rejecting here too means the failure is immediate and obvious
+    // rather than "logs in fine, then every page fails." Platform admins are exempt: their own
+    // account lives in Greecon's own tenant, which suspension never targets.
+    if (!isPlatformAdmin && row.tenant_status !== "active") {
+      throw new UnauthorizedException("This account's client has been suspended. Contact Greecon support.");
+    }
+
+    const role: UserRole = userRoles.includes(row.role as UserRole) ? (row.role as UserRole) : "viewer";
     const claims: JwtClaims = {
       sub: row.id,
       tenantId: row.tenant_id,
