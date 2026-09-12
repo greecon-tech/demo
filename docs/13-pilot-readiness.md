@@ -457,6 +457,18 @@ site keeps running on the pre-split data. After it runs, **log out and log back 
 signed in as `eridon.manuka@greecon.earth` — an already-issued session token still carries the old
 tenant ID until it's refreshed by a fresh login.
 
+**Found and fixed a real bug while actually re-running this on production:** `001_schema.sql`'s
+`commands_audit_event_id_fkey` foreign key used a plain `ALTER TABLE ... ADD CONSTRAINT` with no
+guard — fine the very first time `db:migrate` ever runs against a fresh database, but a hard
+failure on every run after that, since Postgres refuses to add a constraint that already exists.
+`migrate.ts` runs every `.sql` file in one loop with no per-file recovery, so this didn't just skip
+one line — it aborted the entire migration run before file `002` even started, silently blocking
+every migration after it (including this one) from ever reaching a database that already had the
+schema loaded. Wrapped it in `DO $$ ... IF NOT EXISTS (SELECT 1 FROM pg_constraint ...) ... END
+$$;`, the standard idempotent pattern for a constraint Postgres has no native `IF NOT EXISTS` for.
+Every other `ALTER TABLE` across every migration already used `ADD COLUMN IF NOT EXISTS`, so this
+was the only one exposed to it.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site

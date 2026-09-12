@@ -294,9 +294,14 @@ CREATE TABLE IF NOT EXISTS audit_events (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-ALTER TABLE commands
-  ADD CONSTRAINT commands_audit_event_id_fkey
-  FOREIGN KEY (audit_event_id) REFERENCES audit_events(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commands_audit_event_id_fkey') THEN
+    ALTER TABLE commands
+      ADD CONSTRAINT commands_audit_event_id_fkey
+      FOREIGN KEY (audit_event_id) REFERENCES audit_events(id) ON DELETE SET NULL;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS edge_sync_batches (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
