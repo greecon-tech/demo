@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import { hasPermission, Permission, UserRole } from "@greecon/shared";
 
-const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; requires?: Permission }> = [
+const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; requires?: Permission; platformOnly?: boolean }> = [
   {
     href: "/",
     label: "Overview",
@@ -77,6 +77,18 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; re
   },
   { href: "/admin", label: "Admin", requires: "user:manage", icon: <path d="M8 1.7 13 3.6v3.8c0 3.6-2.3 6.2-5 7-2.7-.8-5-3.4-5-7V3.6Z" /> },
   {
+    href: "/platform",
+    label: "Clients",
+    platformOnly: true,
+    icon: (
+      <>
+        <rect x="1.8" y="6.5" width="4.5" height="7.7" rx="0.6" />
+        <rect x="6.8" y="2.3" width="4.5" height="11.9" rx="0.6" />
+        <rect x="11.8" y="8.8" width="2.4" height="5.4" rx="0.6" />
+      </>
+    )
+  },
+  {
     href: "/settings",
     label: "Settings",
     requires: "settings:manage",
@@ -89,9 +101,11 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; re
   }
 ];
 
-export function Nav({ role }: { role: UserRole }) {
+export function Nav({ role, isPlatformAdmin = false }: { role: UserRole; isPlatformAdmin?: boolean }) {
   const pathname = usePathname();
-  const visibleItems = navItems.filter((item) => !item.requires || hasPermission(role, item.requires));
+  const visibleItems = navItems.filter(
+    (item) => (!item.requires || hasPermission(role, item.requires)) && (!item.platformOnly || isPlatformAdmin)
+  );
 
   return (
     <nav className="main-nav" aria-label="Sections">

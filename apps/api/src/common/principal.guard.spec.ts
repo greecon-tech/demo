@@ -42,7 +42,24 @@ describe("PrincipalGuard", () => {
     const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
 
     expect(guard.canActivate(context)).toBe(true);
-    expect(request.principal).toEqual({ tenantId: "tenant-1", userId: "user-1", role: "auditor", email: "auditor@greecon.earth" });
+    expect(request.principal).toEqual({
+      tenantId: "tenant-1",
+      userId: "user-1",
+      role: "auditor",
+      email: "auditor@greecon.earth",
+      isPlatformAdmin: false
+    });
+  });
+
+  it("carries isPlatformAdmin through from the token's claims when present", () => {
+    const claims: JwtClaims = { sub: "user-1", tenantId: "tenant-1", role: "owner", email: "eridon.manuka@greecon.earth", isPlatformAdmin: true };
+    const token = jwt.sign(claims, "test-secret");
+    const guard = new PrincipalGuard();
+    const context = contextWithHeaders({ "x-greecon-session": token });
+    const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
+
+    expect(guard.canActivate(context)).toBe(true);
+    expect(request.principal.isPlatformAdmin).toBe(true);
   });
 
   it("rejects a bearer token that fails verification rather than falling back to headers", () => {

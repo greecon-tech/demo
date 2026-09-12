@@ -18,6 +18,8 @@
 #     not just the routes that obviously need it.
 #   admin/page.tsx          — imports CreateUserForm/CreateSiteForm and binds the user role/status
 #     Server Actions directly (see admin/actions.ts).
+#   platform/page.tsx       — imports CreateTenantForm, which calls the createTenantAction Server
+#     Action (see platform/actions.ts).
 set -e
 # Disables pathname expansion for the rest of the script: one of the paths below literally
 # contains "[siteId]", which the shell would otherwise try to glob-match as a one-character
@@ -32,6 +34,7 @@ src/app/automation/page.tsx
 src/app/sites/[siteId]/page.tsx
 src/app/login/page.tsx
 src/app/admin/page.tsx
+src/app/platform/page.tsx
 src/components/Shell.tsx
 "
 

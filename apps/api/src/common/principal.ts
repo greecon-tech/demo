@@ -9,6 +9,11 @@ export interface Principal {
   userId: string;
   role: UserRole;
   email: string;
+  // Cross-tenant capability held by Greecon's own staff (docs/15-master-roadmap.md, Phase 2) —
+  // orthogonal to `role`, which only ever governs what someone can do inside their own tenant.
+  // Never true from principalFromHeaders(): the header fallback (static export/local dev) must
+  // never grant cross-tenant access.
+  isPlatformAdmin: boolean;
 }
 
 export interface JwtClaims {
@@ -16,6 +21,7 @@ export interface JwtClaims {
   tenantId: string;
   role: UserRole;
   email: string;
+  isPlatformAdmin?: boolean;
 }
 
 export function jwtSecret(): string | undefined {
@@ -33,7 +39,8 @@ export function principalFromClaims(claims: JwtClaims): Principal {
     tenantId: claims.tenantId,
     userId: claims.sub,
     role,
-    email: claims.email
+    email: claims.email,
+    isPlatformAdmin: claims.isPlatformAdmin === true
   };
 }
 
@@ -53,7 +60,8 @@ export function principalFromHeaders(headers: Record<string, string | string[] |
     tenantId,
     userId,
     role: safeRole,
-    email
+    email,
+    isPlatformAdmin: false
   };
 }
 

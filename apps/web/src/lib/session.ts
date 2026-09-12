@@ -10,6 +10,7 @@ export interface SessionUser {
   email: string;
   name: string;
   role: UserRole;
+  isPlatformAdmin: boolean;
 }
 
 export interface Session {

@@ -12,6 +12,7 @@ interface UserCredentialRow {
   name: string;
   password_hash: string | null;
   role: string;
+  is_platform_admin: boolean;
 }
 
 export interface LoginResult {
@@ -22,6 +23,7 @@ export interface LoginResult {
     email: string;
     name: string;
     role: UserRole;
+    isPlatformAdmin: boolean;
   };
 }
 
@@ -43,7 +45,7 @@ export class AuthService {
     }
 
     const result = await this.db.query<UserCredentialRow>(
-      `SELECT u.id, u.tenant_id, u.email, u.name, u.password_hash, m.role
+      `SELECT u.id, u.tenant_id, u.email, u.name, u.password_hash, u.is_platform_admin, m.role
        FROM users u
        JOIN memberships m ON m.user_id = u.id AND m.tenant_id = u.tenant_id
        WHERE lower(u.email) = lower($1) AND u.status = 'active'
@@ -63,11 +65,13 @@ export class AuthService {
     }
 
     const role: UserRole = userRoles.includes(row.role as UserRole) ? (row.role as UserRole) : "viewer";
+    const isPlatformAdmin = row.is_platform_admin === true;
     const claims: JwtClaims = {
       sub: row.id,
       tenantId: row.tenant_id,
       role,
-      email: row.email
+      email: row.email,
+      isPlatformAdmin
     };
 
     const token = jwt.sign(claims, secret, { expiresIn: "12h" });
@@ -79,7 +83,8 @@ export class AuthService {
         tenantId: row.tenant_id,
         email: row.email,
         name: row.name,
-        role
+        role,
+        isPlatformAdmin
       }
     };
   }

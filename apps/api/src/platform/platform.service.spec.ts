@@ -26,6 +26,14 @@ const VIEWER: Principal = {
   email: "viewer@greecon.earth"
 };
 
+const PLATFORM_ADMIN: Principal = {
+  tenantId: DEMO_TENANT_ID,
+  userId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+  role: "owner",
+  email: "eridon.manuka@greecon.earth",
+  isPlatformAdmin: true
+};
+
 const SITE_ID = "22222222-2222-4222-8222-222222222202";
 const PUMP_DEVICE_ID = "44444444-4444-4444-8444-444444444404";
 const PUMP_POINT_ID = "55555555-5555-4555-8555-555555555509";
@@ -333,6 +341,42 @@ describe("PlatformService", () => {
 
     it("refuses to let an owner disable their own account", async () => {
       await expect(platform.updateUser(OWNER.userId, { status: "disabled" }, OWNER)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe("platform-admin tenant onboarding", () => {
+    it("blocks a regular tenant owner (not a platform admin) from listing or creating tenants", async () => {
+      expect(() => platform.listAllTenants(OWNER)).toThrow(ForbiddenException);
+      await expect(
+        platform.createTenant({ name: "New Client Farm", domain: "newclient.example", ownerName: "New Owner", ownerEmail: "owner@newclient.example" }, OWNER)
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("lets a platform admin onboard a brand new client with its own owner account, isolated from the demo tenant", async () => {
+      const { tenant, owner, temporaryPassword } = await platform.createTenant(
+        { name: "New Client Farm", domain: "newclient.example", ownerName: "New Owner", ownerEmail: "Owner@NewClient.example" },
+        PLATFORM_ADMIN
+      );
+
+      expect(tenant.domain).toBe("newclient.example");
+      expect(owner.tenantId).toBe(tenant.id);
+      expect(owner.email).toBe("owner@newclient.example");
+      expect(owner.role).toBe("owner");
+      expect(temporaryPassword.split("-")).toHaveLength(3);
+
+      const allTenants = platform.listAllTenants(PLATFORM_ADMIN);
+      const created = allTenants.find((candidate) => candidate.id === tenant.id);
+      expect(created?.userCount).toBe(1);
+
+      // The new tenant's data must stay invisible to the original demo tenant's own principals.
+      expect(platform.listUsers(OWNER).some((candidate) => candidate.id === owner.id)).toBe(false);
+    });
+
+    it("refuses to onboard a second client with a domain that's already taken", async () => {
+      await platform.createTenant({ name: "First", domain: "dup-client.example", ownerName: "A", ownerEmail: "a@dup-client.example" }, PLATFORM_ADMIN);
+      await expect(
+        platform.createTenant({ name: "Second", domain: "dup-client.example", ownerName: "B", ownerEmail: "b@dup-client.example" }, PLATFORM_ADMIN)
+      ).rejects.toThrow();
     });
   });
 
