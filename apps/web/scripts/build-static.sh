@@ -20,6 +20,10 @@
 #     Server Actions directly (see admin/actions.ts).
 #   platform/page.tsx       — imports CreateTenantForm, which calls the createTenantAction Server
 #     Action (see platform/actions.ts).
+#   analytics/page.tsx      — reads searchParams for a real per-request time range/site query,
+#     which has no meaning against a single static HTML file (see page.static.tsx).
+#   settings/page.tsx       — binds the dashboard-customization Server Actions (see
+#     settings/actions.ts).
 set -e
 # Disables pathname expansion for the rest of the script: one of the paths below literally
 # contains "[siteId]", which the shell would otherwise try to glob-match as a one-character
@@ -35,6 +39,8 @@ src/app/sites/[siteId]/page.tsx
 src/app/login/page.tsx
 src/app/admin/page.tsx
 src/app/platform/page.tsx
+src/app/analytics/page.tsx
+src/app/settings/page.tsx
 src/components/Shell.tsx
 "
 

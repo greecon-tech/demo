@@ -43,12 +43,25 @@ railway run --service api npm run db:migrate -w @greecon/api
 
 `railway run` injects that service's real environment (including `DATABASE_URL`) into the command without ever exposing the database publicly.
 
-**Before this touches real data:** `002_seed_demo.sql` and `003_auth.sql` are demo fixtures that
-ship in this public repo, including a known shared password for every seeded account. Running
-`db:migrate` on a pilot deployment creates those same demo accounts with that same password.
-Either change every seeded account's `password_hash` to a freshly bcrypt-hashed real password
-immediately after migrating, or don't run `003_auth.sql` at all and insert real accounts instead —
-do not leave the shipped demo credentials live on anything reachable by a real user.
+**Demo vs. real accounts — read this before handing out any login.** `002_seed_demo.sql`,
+`003_auth.sql`, and `006_split_demo_and_real_tenant.sql` together produce exactly one demo login
+and Eridon's own real account, kept in two completely separate tenants (`docs/13-pilot-readiness.md`,
+"There was no way to onboard a second client"):
+
+- **`demo@greecon.earth` / `demo123`** — sales/marketing only. Sees the seeded fake demo tenant
+  (solar/battery/water/farm sites with simulated telemetry) and nothing real. Safe to hand to a
+  prospect; it holds no real permissions over anything real, by construction (it lives in a tenant
+  that only ever contains fake data). Never reuse this simple password for a real client account.
+- **`eridon.manuka@greecon.earth`** — the real working account, in its own real tenant that starts
+  with zero sites/devices until they're actually provisioned via the Admin page. Its password is
+  set by hand (not shipped in any migration) — see the password-reset step under "One-time setup"
+  below if it's ever forgotten.
+- Every **new real client** gets onboarded through `/platform` (Greecon platform administrators
+  only) — see `docs/13-pilot-readiness.md` — which creates its own isolated tenant the same way,
+  never by editing seed SQL.
+
+Do not add more demo-style shared-password accounts by hand later; use `/admin`'s "Create user" or
+`/platform`'s "Onboard a new client" instead, both of which generate a real one-time password.
 
 ## Getting the pilot URL
 

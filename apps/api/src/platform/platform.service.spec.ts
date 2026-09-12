@@ -152,6 +152,28 @@ describe("PlatformService", () => {
     });
   });
 
+  describe("dashboard preferences", () => {
+    it("returns null (no database configured) and still lets a save round-trip return what was passed in", async () => {
+      expect(await platform.getDashboardPreferences(OWNER)).toBeNull();
+
+      const widgets = [{ key: "Solar production", visible: true, size: "large" as const }];
+      const saved = await platform.saveDashboardPreferences(widgets, OWNER);
+      expect(saved).toEqual(widgets);
+    });
+  });
+
+  describe("telemetry history", () => {
+    it("falls back to the latest snapshot when no database is configured", async () => {
+      const history = await platform.telemetryHistory(OWNER, undefined, 24);
+      const latest = platform.latestTelemetry(OWNER);
+      expect(history).toEqual(latest);
+    });
+
+    it("blocks a history query for a site outside the caller's tenant", async () => {
+      await expect(platform.telemetryHistory(OTHER_TENANT, SITE_ID, 24)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe("manual override", () => {
     it("records an audit event for a manual override request", async () => {
       const before = platform.listAudit(OWNER).length;

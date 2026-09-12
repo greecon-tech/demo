@@ -177,6 +177,34 @@ export const stateKeys = [
 ] as const;
 export type StateKey = (typeof stateKeys)[number];
 
+export const dashboardWidgetSizes = ["small", "medium", "large"] as const;
+export type DashboardWidgetSize = (typeof dashboardWidgetSizes)[number];
+
+// The full set of cards the Overview page (apps/web/src/app/page.tsx) can ever render — a given
+// tenant may not see all of these at once (buildMetrics there only includes a card when the
+// tenant's sites actually meter it), but the customize panel on /settings needs the full catalog
+// to offer a size/order/visibility control for a card even when it's temporarily absent.
+export const dashboardWidgetCatalog = [
+  "Solar production",
+  "Battery state",
+  "Energy consumption",
+  "Grid import",
+  "Grid export",
+  "Tank level",
+  "Line pressure",
+  "Soil moisture",
+  "Edge connectivity"
+] as const;
+
+/** One entry per Overview metric card. `key` is that card's stable label (see
+ * apps/web/src/app/page.tsx's buildMetrics) — array order is display priority. Persisted per user,
+ * not per tenant: two people on the same team can each arrange their own view. */
+export interface DashboardWidgetPreference {
+  key: string;
+  visible: boolean;
+  size: DashboardWidgetSize;
+}
+
 export interface Tenant {
   id: string;
   name: string;

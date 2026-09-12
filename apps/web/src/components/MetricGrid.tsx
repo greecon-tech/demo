@@ -5,7 +5,7 @@ export function MetricGrid({ metrics }: { metrics: Metric[] }) {
   return (
     <section className="metric-grid" aria-label="Operational metrics">
       {metrics.map((metric) => (
-        <article className="metric-card" key={metric.label}>
+        <article className={`metric-card metric-card--${metric.size ?? "medium"}`} key={metric.label}>
           <div className="metric-card__header">
             <p>{metric.label}</p>
             <StatusBadge status={metric.status} />

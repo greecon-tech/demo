@@ -7,6 +7,7 @@ import { AlertsModule } from "./modules/alerts/alerts.module";
 import { AssetsModule } from "./modules/assets/assets.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { CommandsModule } from "./modules/commands/commands.module";
+import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { DerivedStatesModule } from "./modules/derived-states/derived-states.module";
 import { DevicesModule } from "./modules/devices/devices.module";
 import { EdgeSyncModule } from "./modules/edge-sync/edge-sync.module";
@@ -52,6 +53,7 @@ import { PlatformModule } from "./platform/platform.module";
     DerivedStatesModule,
     RulesModule,
     CommandsModule,
+    DashboardModule,
     AlertsModule,
     IncidentsModule,
     MaintenanceModule,

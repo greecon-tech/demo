@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { GREECON_COMPANY } from "@greecon/shared";
+import { DashboardWidgetPreference, GREECON_COMPANY } from "@greecon/shared";
 import { DataTable } from "../components/DataTable";
 import { MetricGrid } from "../components/MetricGrid";
 import { Section } from "../components/Section";
 import { Shell } from "../components/Shell";
 import { StatusBadge } from "../components/StatusBadge";
 import { apiGet } from "../lib/api";
+import { applyDashboardPreferences } from "../lib/dashboard-preferences";
 import { Metric } from "../lib/types";
 
 interface OverviewSite {
@@ -45,12 +46,20 @@ interface Overview {
 }
 
 export default async function OverviewPage() {
-  const overview = await apiGet<Overview>("/overview");
-  const metrics = buildMetrics(overview);
+  const [overview, preferences] = await Promise.all([
+    apiGet<Overview>("/overview"),
+    apiGet<DashboardWidgetPreference[] | null>("/dashboard-preferences")
+  ]);
+  const metrics = applyDashboardPreferences(buildMetrics(overview), preferences);
   const siteName = new Map(overview.sites.map((site) => [site.id, site.name]));
 
   return (
     <Shell title="Overview" subtitle="Integrated energy, water, agriculture, automation, and edge status.">
+      <div className="overview-toolbar">
+        <Link href="/settings#dashboard" className="button-ghost">
+          Customize dashboard
+        </Link>
+      </div>
       <MetricGrid metrics={metrics} />
       <div className="split">
         <Section title="Sites">
