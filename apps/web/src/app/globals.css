@@ -79,14 +79,28 @@ button:focus-visible {
   border-color: var(--text);
 }
 
-button.button-ghost {
+button.button-ghost,
+a.button-ghost {
   background: transparent;
   border-color: var(--line);
   color: var(--text);
 }
 
+a.button-ghost {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
 button.button-ghost:hover,
-button.button-ghost:focus-visible {
+button.button-ghost:focus-visible,
+a.button-ghost:hover,
+a.button-ghost:focus-visible {
   background: var(--bg-hover);
   border-color: var(--line);
   color: var(--text);
@@ -360,6 +374,12 @@ main {
   background: var(--bg-hover);
 }
 
+.overview-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -2px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -385,6 +405,23 @@ main {
 .metric-card:hover {
   border-color: rgba(47, 61, 53, 0.35);
   box-shadow: 0 1px 3px rgba(26, 33, 29, 0.1);
+}
+
+.metric-card--small {
+  min-height: 108px;
+  padding: 12px;
+  gap: 8px;
+}
+
+.metric-card--large {
+  grid-column: span 2;
+  min-height: 180px;
+}
+
+@media (max-width: 640px) {
+  .metric-card--large {
+    grid-column: span 1;
+  }
 }
 
 .metric-card__header {
@@ -730,15 +767,18 @@ tbody tr:hover {
   padding-bottom: 10px;
 }
 
+.tabs a,
 .tabs span {
   border-radius: 6px;
   padding: 6px 12px;
   font-size: 0.86rem;
   font-weight: 500;
   color: var(--muted);
+  text-decoration: none;
 }
 
-.tabs span:first-child {
+.tabs span:first-child,
+.tabs a[aria-current="page"] {
   background: var(--bg-hover-strong);
   color: var(--text);
 }
@@ -805,6 +845,68 @@ tbody tr:hover {
   margin: 0;
   color: var(--critical-fg);
   font-size: 0.85rem;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.chart-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-card);
+  padding: 14px;
+}
+
+.chart-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chart-card__latest {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.chart-card__latest small {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.chart-card__svg {
+  width: 100%;
+  height: 90px;
+  display: block;
+}
+
+.chart-card__axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-card__range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--faint);
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.dashboard-order-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.dashboard-order-controls button {
+  min-height: 28px;
+  min-width: 28px;
+  padding: 0;
 }
 
 .user-row-form {

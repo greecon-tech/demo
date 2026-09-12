@@ -33,7 +33,7 @@ export async function apiGet<T>(path: string, role: DemoRole = DEMO_ROLE): Promi
 
 /** Mutations only work against a live server (Railway/GCP) — the static GitHub Pages export
  * has nothing to send them to, so callers must gate this behind NEXT_OUTPUT_EXPORT themselves. */
-export async function apiMutate<T>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown, role: DemoRole = DEMO_ROLE): Promise<T> {
+export async function apiMutate<T>(path: string, method: "POST" | "PATCH" | "PUT" | "DELETE", body?: unknown, role: DemoRole = DEMO_ROLE): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers: { "content-type": "application/json", ...(await requestHeaders(role)) },

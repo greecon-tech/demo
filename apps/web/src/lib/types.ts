@@ -6,4 +6,7 @@ export interface Metric {
   unit?: string;
   status: Status | string;
   note: string;
+  /** Display size on the Overview grid — set from a saved dashboard preference
+   * (lib/dashboard-preferences.ts); omitted means the default medium size. */
+  size?: "small" | "medium" | "large";
 }

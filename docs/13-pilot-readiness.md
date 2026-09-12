@@ -383,6 +383,80 @@ passing total — plus full `tsc`/`next build` passes for both apps.
   bug when attempted; worth a dedicated look with a working npm version rather than a rushed
   workaround.
 
+### There was no real visibility into any resource over time, and Analytics was 100% fake
+
+**Gap:** the Overview and Monitoring pages only ever showed the single latest reading per point —
+no way to see whether solar production was trending up, how much energy was actually going to the
+grid versus being consumed on-site, or whether a tank was draining faster than usual. Worse,
+`/analytics` didn't even try: every number on it (`"Energy self-use: 82%"`, `"Water efficiency:
+74%"`) was a hardcoded literal, unconnected to any real reading, and the "24 hours / 7 days / 30
+days / Quarter" tabs were plain `<span>`s that did nothing.
+
+**Fix:** `GET /telemetry/history?siteId=&hours=` (`PlatformService.telemetryHistory`) queries
+`telemetry_readings` directly from Postgres for a real time window, instead of the in-memory
+snapshot every other telemetry read uses (which only ever holds the latest value per point by
+design). `/analytics` is rebuilt around it: a real chart per metric — solar production,
+consumption, grid import, grid export, and battery state of charge for Energy; tank level, flow,
+and pressure for Water; soil moisture, temperature, and humidity for Agriculture — so "how much is
+being produced vs. how much is going to the grid" is finally an actual answer, not a guess from
+two separate numbers. The time-range and site tabs are now real links that change what's queried.
+Charts are a small hand-rolled SVG line component (`TimeSeriesChart`), not a new charting library
+dependency — consistent with `SensorMap`'s existing hand-rolled approach.
+
+**Verified:** 2 new `PlatformService` tests (no-database fallback returns the latest snapshot;
+cross-tenant site history blocked) plus full `tsc`/`next build` passes, including the static
+export's own fixed-window twin (`analytics/page.static.tsx`).
+
+**How to extend further:** with only one site per tenant in practice today, tenant-wide history
+works fine; a tenant running multiple sites that share a canonical name (e.g., two farms both
+metering `energy.grid.import.kw`) would see both sites' readings plotted as one series — a
+per-metric site breakdown is the natural next step once that's a real scenario, not a demo one.
+
+### The Overview dashboard was fixed for everyone — no way to prioritize, hide, or resize a card
+
+**Gap:** every Overview metric card showed in the same fixed order, at the same size, for every
+user — an operator who only cares about irrigation had to scroll past energy/water cards to reach
+it, with no way to change that.
+
+**Fix:** `dashboard_preferences` (one row per user, `007_dashboard_preferences.sql`) stores an
+ordered list of `{key, visible, size}` per widget. `/settings` has a real "Dashboard" section:
+Up/Down buttons reorder a card (priority), a Visible/Hidden toggle hides one, and a Small/Medium/
+Large button cycles its display size (`.metric-card--small`/`--large` in `globals.css`) — all
+plain Server Action forms, no client JavaScript. The Overview page applies whatever's saved
+(`lib/dashboard-preferences.ts`) on top of whatever metrics the tenant actually has; a card the
+tenant doesn't meter still just doesn't appear, same as before this existed.
+
+**Verified:** 1 new `PlatformService` test (no-database fallback + save round-trip) plus full
+`tsc`/`next build` passes for both SSR and static-export paths.
+
+**How to extend further:** this is deliberately not drag-and-drop — up/down buttons were enough to
+ship a real, working priority control without a new client-side library. A true drag-to-reorder
+UI is a pure frontend enhancement on top of the same API whenever it's worth the added complexity.
+
+### The seeded demo tenant and Eridon's real working account were the same tenant
+
+**Gap:** `eridon.manuka@greecon.earth` — the real account meant to run Greecon's own real pilot —
+was seeded as the owner of the same tenant that also held every fake demo site (solar/battery/
+water/farm) and their simulated telemetry. Harmless while nothing real existed yet; actively
+dangerous the moment a real farm gets provisioned into it, since real and fake data would then
+share one dashboard with no way to tell them apart. There was also no single clean login to hand a
+sales prospect — five different demo accounts existed, sharing one password.
+
+**Fix (`006_split_demo_and_real_tenant.sql`):** Eridon's account moves to a brand new, completely
+empty real tenant — his existing real password is untouched, only which tenant he belongs to
+changes. The old demo tenant keeps every seeded fake site/telemetry/rule (exactly what makes it
+useful for a demo) but is reduced to one login: **`demo@greecon.earth` / `demo123`** — safe to
+hand to a prospect, since it lives in a tenant that only ever contains fake data and has no real
+permissions over anything real by construction. See the credential rundown in
+`docs/11-deployment-railway.md`.
+
+**Action required on the live deployment:** migrations only run when explicitly triggered (see
+"One-time setup" in `docs/11-deployment-railway.md`) — this migration will not take effect until
+`npm run db:migrate -w @greecon/api` is run again against the real database. Until then, the live
+site keeps running on the pre-split data. After it runs, **log out and log back in** if already
+signed in as `eridon.manuka@greecon.earth` — an already-issued session token still carries the old
+tenant ID until it's refreshed by a fresh login.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site

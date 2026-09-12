@@ -8,6 +8,7 @@ import {
   AutomationRule,
   CommandAckMessage,
   CommandMessage,
+  DashboardWidgetPreference,
   DEMO_TENANT_ID,
   DerivedState,
   Device,
@@ -644,6 +645,33 @@ export class PlatformService implements OnModuleInit {
         canReadAudit: hasPermission(principal.role, "audit:read")
       }
     };
+  }
+
+  // null (not []) distinguishes "never customized, use the built-in default order" from "chose to
+  // hide everything" — the web app only overrides its own default widget list when this returns
+  // an actual array. No database configured (local dev, static export) means no persisted
+  // preference exists to read, same reasoning as everywhere else this pattern appears.
+  async getDashboardPreferences(principal: Principal): Promise<DashboardWidgetPreference[] | null> {
+    if (!this.db.isConfigured()) return null;
+
+    const result = await this.db.query<{ widgets: DashboardWidgetPreference[] }>(
+      `SELECT widgets FROM dashboard_preferences WHERE user_id = $1 AND tenant_id = $2`,
+      [principal.userId, principal.tenantId]
+    );
+
+    return result.rows[0]?.widgets ?? null;
+  }
+
+  async saveDashboardPreferences(widgets: DashboardWidgetPreference[], principal: Principal): Promise<DashboardWidgetPreference[]> {
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO dashboard_preferences (user_id, tenant_id, widgets, updated_at) VALUES ($1,$2,$3,now())
+         ON CONFLICT (user_id) DO UPDATE SET widgets = EXCLUDED.widgets, tenant_id = EXCLUDED.tenant_id, updated_at = now()`,
+        [principal.userId, principal.tenantId, JSON.stringify(widgets)]
+      );
+    }
+
+    return widgets;
   }
 
   listTenants(principal: Principal): Tenant[] {
@@ -1418,6 +1446,38 @@ export class PlatformService implements OnModuleInit {
     });
 
     return { deleted: true };
+  }
+
+  // Every other telemetry consumer in this service works off this.telemetry, which only ever
+  // holds the latest reading per point (see upsertLatestTelemetry) — there was previously no way
+  // to see a trend over time anywhere in the platform, only instantaneous values. This queries
+  // real history straight from Postgres rather than the in-memory snapshot. Without a database
+  // configured (local dev, the static GitHub Pages export) there's no history to query at all, so
+  // it falls back to today's one latest point per canonical name rather than erroring — enough for
+  // a chart to still render something, just flat.
+  async telemetryHistory(principal: Principal, siteId: string | undefined, hours: number): Promise<TelemetryReading[]> {
+    if (siteId) this.requireSite(siteId, principal.tenantId);
+
+    if (!this.db.isConfigured()) {
+      return this.latestTelemetry(principal, siteId);
+    }
+
+    const params: unknown[] = [principal.tenantId, hours];
+    let siteFilter = "";
+    if (siteId) {
+      params.push(siteId);
+      siteFilter = "AND site_id = $3";
+    }
+
+    const result = await this.db.query<TelemetryRow>(
+      `SELECT * FROM telemetry_readings
+       WHERE tenant_id = $1 AND timestamp_utc >= now() - ($2 || ' hours')::interval ${siteFilter}
+       ORDER BY timestamp_utc ASC
+       LIMIT 20000`,
+      params
+    );
+
+    return result.rows.map((row) => mapTelemetryRow(row));
   }
 
   latestTelemetry(principal: Principal, siteId?: string): TelemetryReading[] {

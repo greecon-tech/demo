@@ -19,4 +19,13 @@ export class TelemetryController {
   latest(@Query("siteId") siteId: string | undefined, @Req() request: RequestWithPrincipal) {
     return this.platform.latestTelemetry(request.principal, siteId);
   }
+
+  // Time-range query for real charts (Analytics page) — see PlatformService.telemetryHistory for
+  // why this reads Postgres directly instead of the in-memory latest-only snapshot.
+  @Get("history")
+  @RequirePermissions("point:read")
+  history(@Query("siteId") siteId: string | undefined, @Query("hours") hoursParam: string | undefined, @Req() request: RequestWithPrincipal) {
+    const hours = Math.min(Math.max(Number(hoursParam) || 24, 1), 24 * 90);
+    return this.platform.telemetryHistory(request.principal, siteId, hours);
+  }
 }

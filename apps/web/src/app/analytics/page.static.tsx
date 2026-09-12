@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { CanonicalPointName } from "@greecon/shared";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
@@ -7,14 +6,8 @@ import { apiGet } from "../../lib/api";
 
 interface TelemetryReading {
   timestampUtc: string;
-  siteId: string;
   canonicalName: string;
   value: number | boolean | string;
-}
-
-interface Site {
-  id: string;
-  name: string;
 }
 
 interface ResourceMetric {
@@ -43,54 +36,17 @@ const AGRICULTURE_METRICS: ResourceMetric[] = [
   { canonicalName: "agri.humidity.percent", label: "Humidity", unit: "%" }
 ];
 
-const RANGES: Record<string, number> = { "24h": 24, "7d": 24 * 7, "30d": 24 * 30, "90d": 24 * 90 };
-const DEFAULT_RANGE = "7d";
-
-// Replaces what used to be a handful of hardcoded fake percentages — every chart here is real
-// telemetry_readings history, queried straight from Postgres (see PlatformService.telemetryHistory,
-// added because nothing anywhere previously showed a trend over time, only instantaneous values).
-// No explicit `dynamic` export needed: reading searchParams already forces per-request rendering
-// on its own. This file is SSR-only — see page.static.tsx for the static GitHub Pages twin, which
-// has no server to answer a different query string with different data anyway.
-export default async function AnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; siteId?: string }> }) {
-  const params = await searchParams;
-  const range = params.range && RANGES[params.range] ? params.range : DEFAULT_RANGE;
-  const hours = RANGES[range];
-  const siteId = params.siteId;
-
-  const [sites, readings] = await Promise.all([
-    apiGet<Site[]>("/sites"),
-    apiGet<TelemetryReading[]>(`/telemetry/history?hours=${hours}${siteId ? `&siteId=${siteId}` : ""}`)
-  ]);
-
+// Static-export twin of page.tsx (see apps/web/scripts/build-static.sh). The live page reads
+// searchParams to let a real server answer a different time range/site on every request — a
+// static build has no server to do that with, so this bakes in one fixed 7-day window and drops
+// the range/site tabs entirely rather than shipping dead links that would all serve the same file.
+export default async function AnalyticsPage() {
+  const readings = await apiGet<TelemetryReading[]>("/telemetry/history?hours=168");
   const byCanonicalName = groupByCanonicalName(readings);
 
   return (
     <Shell title="Analytics" subtitle="Real historical trends across energy, water, and agriculture — not a snapshot.">
-      <Section title="Time range">
-        <div className="tabs">
-          {Object.keys(RANGES).map((key) => (
-            <Link key={key} href={buildHref(key, siteId)} aria-current={key === range ? "page" : undefined}>
-              {rangeLabel(key)}
-            </Link>
-          ))}
-        </div>
-      </Section>
-      {sites.length > 1 ? (
-        <Section title="Site">
-          <div className="tabs">
-            <Link href={buildHref(range, undefined)} aria-current={!siteId ? "page" : undefined}>
-              All sites
-            </Link>
-            {sites.map((site) => (
-              <Link key={site.id} href={buildHref(range, site.id)} aria-current={siteId === site.id ? "page" : undefined}>
-                {site.name}
-              </Link>
-            ))}
-          </div>
-        </Section>
-      ) : null}
-      <Section title="Energy" aside={<span className="muted">Production, consumption, and grid exchange</span>}>
+      <Section title="Energy" aside={<span className="muted">Production, consumption, and grid exchange — last 7 days</span>}>
         <div className="chart-grid">
           {ENERGY_METRICS.map((metric) => (
             <TimeSeriesChart key={metric.canonicalName} title={metric.label} unit={metric.unit} data={byCanonicalName.get(metric.canonicalName) ?? []} />
@@ -124,14 +80,4 @@ function groupByCanonicalName(readings: readonly TelemetryReading[]): Map<string
     grouped.set(reading.canonicalName, series);
   }
   return grouped;
-}
-
-function buildHref(range: string, siteId: string | undefined): string {
-  const query = new URLSearchParams({ range });
-  if (siteId) query.set("siteId", siteId);
-  return `/analytics?${query.toString()}`;
-}
-
-function rangeLabel(key: string): string {
-  return { "24h": "24 hours", "7d": "7 days", "30d": "30 days", "90d": "Quarter" }[key] ?? key;
 }
