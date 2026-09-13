@@ -48,7 +48,7 @@ interface Overview {
 export default async function OverviewPage() {
   const [overview, preferences] = await Promise.all([
     apiGet<Overview>("/overview"),
-    apiGet<DashboardWidgetPreference[] | null>("/dashboard-preferences")
+    apiGet<DashboardWidgetPreference[]>("/dashboard-preferences")
   ]);
   const metrics = applyDashboardPreferences(buildMetrics(overview), preferences);
   const siteName = new Map(overview.sites.map((site) => [site.id, site.name]));
