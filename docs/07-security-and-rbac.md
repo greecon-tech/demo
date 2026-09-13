@@ -44,23 +44,40 @@ no valid session token gets `401 Unauthorized`, full stop, not a role assigned f
 happened to send. This matters now that the API can have a public domain (below) — an unauthenticated
 header from literally anyone on the internet must never grant anything.
 
-**The one exception, scoped tightly:** `POST /telemetry/ingest` also accepts a shared device
-secret (`x-edge-device-token`, matched against `EDGE_INGEST_TOKEN`) for a real edge box that has no
-user to log in as — see `docs/14-edge-hardware-deployment.md`. This grants a synthetic "operator"
-principal for a single fixed tenant (`EDGE_INGEST_TENANT_ID`) and *only* for that one route —
-`PrincipalGuard` checks the exact path and method before granting it, so the same header on any
-other route falls straight into the production lockout above. Both env vars must be set together;
-either one missing disables the path entirely. This is a genuinely simpler, less isolated
-credential than the real per-gateway identity `docs/15-master-roadmap.md`'s Phase 2 describes (a
-leaked token can inject fake telemetry for one tenant, though never read anything or issue a
-command) — an explicit trade-off for a first real pilot with one site, not the end state.
+**The one exception, scoped tightly:** `POST /telemetry/ingest` also accepts a device secret
+(`x-edge-device-token`) for a real edge box that has no user to log in as — see
+`docs/14-edge-hardware-deployment.md`. `PrincipalGuard` checks the exact path and method before
+granting anything through this header, so it falls straight into the production lockout above on
+any other route. Two credential schemes are checked, in order:
 
-There is no *self-service* password reset flow yet (that needs a real email-sending integration
-this deployment doesn't have) — an owner/admin can reset another user's password from the Admin
-page instead (`POST /users/:userId/reset-password`), generating a fresh temporary password shown
-once, the same one-time-disclosure handling as creating a new user. Every seeded demo account
-still shares one password (`003_auth.sql`) — that one's still an open item, tracked in
-`docs/15-master-roadmap.md`, Phase 0.
+1. **A real per-gateway secret** (the normal path): generated once through the "Add gateway" form
+   on a site's own page, shown exactly once, and stored only as a SHA-256 hash in `edge_gateways`.
+   `PrincipalGuard` looks it up with one indexed query and grants a synthetic "operator" principal
+   scoped to whichever tenant owns that gateway — a leaked secret can inject fake telemetry for
+   that one tenant, but can't read anything, issue a command, or affect any other client's gateway.
+   SHA-256 rather than bcrypt deliberately: this is a high-entropy random token, not a low-entropy
+   human password, so it doesn't need bcrypt's slowness, and a fast hash is what makes the lookup a
+   single query instead of a bcrypt-compare loop over every registered gateway.
+2. **A legacy shared token** (`EDGE_INGEST_TOKEN`/`EDGE_INGEST_TENANT_ID`, both env vars, both
+   required together): checked only if no gateway's secret matches. This was the *only* mechanism
+   before per-gateway credentials existed — one fixed secret for one fixed tenant, which cannot
+   support a second real client's edge device without Greecon reconfiguring Railway by hand. Kept
+   working for any deployment that already configured it; a gateway created through the UI never
+   needs it.
+
+Real per-gateway mTLS/certificate identity (`docs/15-master-roadmap.md`'s Phase 2) remains the
+further-out end state — this SHA-256 secret is a real, unique-per-device credential already, just
+without a certificate chain or hardware-backed key storage behind it.
+
+There is no *self-service forgot-password* flow yet — recovering a genuinely forgotten password
+still needs a real email-sending integration this deployment doesn't have, so an owner/admin resets
+it for you from the Admin page instead (`POST /users/:userId/reset-password`), generating a fresh
+temporary password shown once, the same one-time-disclosure handling as creating a new user. But
+*changing* a password you still remember is self-service: `POST /auth/change-password` (`/settings`
+→ "Account Security") lets any logged-in user set their own new password after confirming the
+current one — no admin needed for the common case of just wanting a different password. Every
+seeded demo account still shares one password (`003_auth.sql`) — that one's still an open item,
+tracked in `docs/15-master-roadmap.md`, Phase 0.
 
 `POST /auth/login` is rate-limited to 8 attempts per minute per caller (the rest of the API to 120
 requests per minute per caller as a global default) via `@nestjs/throttler`, in-memory — fine for

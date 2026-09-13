@@ -45,37 +45,50 @@ site, that fallback is disabled outright on a production deployment (`docs/07-se
 
 **The current approach — a public API with a device-only credential.** The API's Railway (or GCP)
 domain is made public, but the only thing an unauthenticated caller can ever do with it is
-`POST /telemetry/ingest`, and only with the right shared secret:
+`POST /telemetry/ingest`, and only with the right per-gateway secret:
 
-1. Generate a random secret and set it as `EDGE_INGEST_TOKEN` on the API service, alongside
-   `EDGE_INGEST_TENANT_ID` set to this pilot's real tenant ID (from the platform's Admin page, or
-   `/platform` if you're a Greecon platform administrator). Both must be set together — either one
-   missing disables this path entirely, it does not silently fall back to anything less secure.
-2. Give the API service a public domain (same step as the web service already has one).
-3. Set `EDGE_TOKEN` in this box's `edge.env` to the same secret from step 1, and `API_URL` to the
-   API's new public URL.
+1. Give the API service a public domain (same step as the web service already has one) — needed
+   once, not per gateway.
+2. Create the site on the platform's Admin page first if it doesn't exist yet, then open that
+   site's own page and use the **"Add gateway"** form (needs `device:manage` — owner/admin/operator).
+   It generates a real secret and shows it exactly once — copy it now, it is never shown again.
+3. Set `EDGE_TOKEN` in this box's `edge.env` to that secret, and `API_URL` to the API's public URL.
 
-The edge agent sends that secret as `x-edge-device-token`; the API checks it only on that one
-route, for that one tenant, and rejects it — same as an unauthenticated request — everywhere else.
-This is deliberately simpler than a private tunnel for a first real pilot with one site; a
-compromised token can inject fake telemetry for this one tenant but cannot read anything, issue
-commands, or reach any other route.
+The edge agent sends that secret as `x-edge-device-token`; the API looks it up against every
+registered gateway (one query, not a slow per-attempt comparison) and grants access scoped to
+whichever tenant that specific gateway belongs to — everything else, on any other route, is
+rejected the same as an unauthenticated request. Every gateway gets its own secret this way: a
+compromised one can inject fake telemetry for its own tenant only, cannot read anything, issue
+commands, or reach any other route, and revoking it just means creating a new one and updating this
+one box. Onboarding a second, third, or hundredth client's gateway needs nothing beyond this — no
+Railway configuration, no environment variables, ever, per client.
 
-**Alternative — a private tunnel, no public exposure at all.** If a client's compliance posture
-rules out any public endpoint, put the edge box on the same private network as the API via
-WireGuard or Tailscale instead, and skip `EDGE_INGEST_TOKEN` entirely:
+**Legacy alternative — a single shared token for one fixed tenant.** Before per-gateway credentials
+existed, the only option was one `EDGE_INGEST_TOKEN`/`EDGE_INGEST_TENANT_ID` pair set as Railway
+environment variables on the API service, shared by every gateway across that one tenant. Still
+works if already configured (`docs/07-security-and-rbac.md`), but a new deployment should always
+use the per-gateway form above instead — the shared token can't support more than one client's
+tenant at all, since `EDGE_INGEST_TENANT_ID` is a single fixed value.
+
+**Alternative — a private tunnel, no public domain on the API at all.** If a client's compliance
+posture rules out the API ever having a public domain, put the edge box on the same private network
+as the API via WireGuard or Tailscale instead of generating one. This changes *which network the
+request travels over*, not *whether it needs a credential* — a production deployment
+(`NODE_ENV=production`, set by both Dockerfiles) rejects an unauthenticated request unconditionally,
+tunnel or not (`docs/07-security-and-rbac.md`), so `EDGE_TOKEN` is still required either way:
 
 1. Deploy Tailscale (or WireGuard) on the machine/network where the API actually runs (a
    Tailscale subnet-router service alongside it on Railway, or your GCP VPC directly).
 2. Install the same client on the edge box during provisioning (`apt install tailscale` on
    Ubuntu, then `tailscale up`, or the equivalent WireGuard peer config).
-3. Set `API_URL` in `edge.env` to the API's address **on that private network**, not a public
-   hostname, and leave `EDGE_TOKEN` unset — the agent falls back to the header-trust path, which
-   is fine on a network nothing external can reach.
+3. Generate a gateway secret the same way as the public approach above (Admin page → the site →
+   "Add gateway"), and set `EDGE_TOKEN` to it.
+4. Set `API_URL` in `edge.env` to the API's address **on that private network**, not a public
+   hostname — the only thing this alternative actually changes.
 
 If the edge box happens to be on the same LAN/VPC as the API already (e.g. a pilot running
 everything in one building), you can skip the tunnel too and point `API_URL` straight at the API's
-internal address.
+internal address — `EDGE_TOKEN` is still required, for the same reason.
 
 ## Step 1 — Flash the OS
 
@@ -125,11 +138,13 @@ Fill in the blanks from `infra/edge/edge.env.example`:
 
 - `TENANT_ID`/`SITE_ID` — create the site on the platform's Admin page first if it doesn't exist
   yet, then copy its ID from there (no more reading it out of Postgres by hand).
-- `GATEWAY_ID` — this gateway's UUID; there's no provisioning UI for gateways yet, so this still
-  needs inserting directly (`edge_gateways` table) until that exists.
-- `API_URL` — the API's public URL (device-token approach) or its private-network address (tunnel
-  approach) — see the prerequisite step above for which one applies.
-- `EDGE_TOKEN` — only for the device-token approach; leave unset for the tunnel approach.
+- `GATEWAY_ID`/`EDGE_TOKEN` — both come from the same "Add gateway" form on that site's own page
+  (the prerequisite step above): `GATEWAY_ID` is the created gateway's own ID, `EDGE_TOKEN` is the
+  secret shown once on that same screen — copy both before leaving the page, there's no provisioning
+  console command needed and no way to see the secret again afterward.
+- `API_URL` — the API's public URL, or its private-network address if using the tunnel alternative
+  — see the prerequisite step above for which one applies. `EDGE_TOKEN` is required either way; the
+  tunnel only changes which network the request travels over, not whether it needs a credential.
 
 ## Step 5 — Start it
 

@@ -1,4 +1,5 @@
 import { GREECON_COMPANY, GREECON_DOMAIN } from "@greecon/shared";
+import { ChangePasswordForm } from "../../components/ChangePasswordForm";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { cycleWidgetSizeAction, loadWidgetPreferences, moveWidgetAction, toggleWidgetVisibilityAction } from "./actions";
@@ -79,19 +80,14 @@ export default async function SettingsPage() {
           </table>
         </div>
       </Section>
+      <Section title="Account Security" aside={<span className="muted">Changes only your own login</span>}>
+        <ChangePasswordForm />
+      </Section>
       <Section title="Operational Settings">
         <div className="metric-grid">
           <div className="panel">
             <h3>Notifications</h3>
             <p className="muted">Alert routing placeholder.</p>
-          </div>
-          <div className="panel">
-            <h3>API Keys</h3>
-            <p className="muted">No keys generated in MVP.</p>
-          </div>
-          <div className="panel">
-            <h3>Edge Gateway</h3>
-            <p className="muted">Certificate identity placeholder.</p>
           </div>
           <div className="panel">
             <h3>Billing</h3>

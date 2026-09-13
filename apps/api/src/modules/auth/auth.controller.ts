@@ -3,6 +3,7 @@ import { Throttle } from "@nestjs/throttler";
 import { PlatformService } from "../../platform/platform.service";
 import { RequestWithPrincipal } from "../../common/principal";
 import { AuthService } from "./auth.service";
+import { ChangePasswordDto } from "./change-password.dto";
 import { LoginDto } from "./login.dto";
 
 @Controller("auth")
@@ -25,5 +26,13 @@ export class AuthController {
   @Get("session")
   session(@Req() request: RequestWithPrincipal) {
     return this.platform.session(request.principal);
+  }
+
+  // No @RequirePermissions — every role can change their own password; this operates on the
+  // caller's own userId from their verified session, never a target the caller chooses.
+  @Post("change-password")
+  async changePassword(@Body() body: ChangePasswordDto, @Req() request: RequestWithPrincipal): Promise<{ success: true }> {
+    await this.auth.changePassword(request.principal.userId, body.currentPassword, body.newPassword);
+    return { success: true };
   }
 }

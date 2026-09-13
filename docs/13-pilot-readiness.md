@@ -675,6 +675,53 @@ would close the gap completely if it's ever worth it. A per-site "0 devices yet"
 detail page itself (beyond the existing empty `SensorMap` message) is a natural next increment once
 there's a second real client actually hitting that state.
 
+### Connecting a second real client's edge device, and resetting your own password, both still needed a console
+
+**Gap:** two genuine "still needs the backend" gaps remained even after Admin Center and the
+Device/Point forms shipped:
+
+- **Only one client could ever have a real edge device at all.** `EDGE_INGEST_TOKEN`/
+  `EDGE_INGEST_TENANT_ID` (`docs/07-security-and-rbac.md`) is a single Railway environment variable
+  pair, hardcoded to one fixed tenant. A second real client's farm PC had no way to authenticate at
+  all without Greecon manually reconfiguring Railway — and even then, only one client's device could
+  be live at a time, since the tenant ID is a single value.
+- **There was no way to set your own chosen password.** The only two ways a `password_hash` ever
+  changed were a migration-seeded value or `POST /users/:userId/reset-password` (Admin page), which
+  always generates a random one-time password, never a password the user picks. Setting Eridon's
+  real account to a specific password required a one-off script run directly against the database.
+
+**Fix, two parts:**
+- **Real per-gateway credentials.** `edge_gateways` (already existed as a placeholder table with no
+  API) gains a `secret_hash` column (`008_gateway_credentials.sql`) and a real `POST /gateways`
+  endpoint (`device:manage`, same permission as devices/points) — a new **"Add gateway"** form on
+  each site's own page generates a real random secret, shown exactly once (same one-time-disclosure
+  handling as a new user's temporary password), and stores only its SHA-256 hash. `PrincipalGuard`
+  now checks `POST /telemetry/ingest`'s device token against every registered gateway's hash first
+  (one indexed query, not a bcrypt-compare loop — a high-entropy random token doesn't need bcrypt's
+  deliberate slowness the way a human password does) before falling back to the legacy shared
+  `EDGE_INGEST_TOKEN` path, which still works unchanged for any deployment that configured it
+  before this existed. Any number of clients, any number of gateways per client, zero Railway
+  configuration per client from here on.
+- **Self-service password change.** `POST /auth/change-password` (any logged-in role, operating only
+  on the caller's own `userId`) verifies the current password before accepting a new one — the same
+  page a user already visits for dashboard preferences (`/settings`) now has a real "Account
+  Security" section for this, replacing two stale placeholder panels ("API Keys", "Edge Gateway")
+  that never did anything.
+
+**Verified against a real, running Postgres** (not just unit tests): ran all 8 migrations fresh,
+created a gateway via the API and confirmed its secret authenticates `POST /telemetry/ingest` in
+production mode with **no `EDGE_INGEST_TOKEN` env var set at all**, confirmed the resulting reading
+actually lands in `telemetry_readings`, and confirmed the production header-fallback lockout still
+rejects an unauthenticated request the same run. Separately logged in as the demo account, changed
+its password through the new endpoint, confirmed the old password then fails and the new one
+succeeds, and confirmed a wrong current password is rejected without changing anything. Plus 8 new
+`PrincipalGuard`/`PlatformService` tests (57 total) and full `tsc`/`next build` passes for both apps.
+
+**How to extend further:** a gateway's secret is still all-or-nothing — reading it again means
+generating a new one (there's no "reveal" after the creation screen closes, by design, same as a
+user's temporary password). A "Revoke" action (clear `secret_hash`, forcing a fresh one) is a small,
+natural addition once a real gateway is ever physically replaced or a device is decommissioned.
+
 ## Still open
 
 ### Manual command targets are not filtered by role/site scope beyond permission

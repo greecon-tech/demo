@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { hasPermission } from "@greecon/shared";
 import { CreateDeviceForm } from "../../../components/CreateDeviceForm";
+import { CreateGatewayForm } from "../../../components/CreateGatewayForm";
 import { CreatePointForm } from "../../../components/CreatePointForm";
 import { DataTable } from "../../../components/DataTable";
 import { ManualControlPanel } from "../../../components/ManualControlPanel";
@@ -20,6 +21,7 @@ interface SiteDetail {
   assets: Array<{ id: string; name: string; type: string; status: string }>;
   devices: Array<{ id: string; name: string; deviceType: string; protocol: string; health: string; lastSeenUtc?: string; positionX?: number; positionY?: number; placementNote?: string }>;
   points: Array<{ id: string; deviceId: string; label: string; unit: string; canonicalName: string; capability: string }>;
+  gateways: Array<{ id: string; name: string; status: string; secureIdentityStatus: string }>;
   latestTelemetry: Array<{ pointId: string; canonicalName: string; value: number | boolean | string; unit: string; quality: string }>;
   rules: Array<{ id: string; name: string; priority: string; executionMode: string; approvalState: string }>;
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
@@ -103,6 +105,22 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
         <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />
         {canManageDevices ? (
           <div className="stack">
+            <h3>Gateways</h3>
+            <p className="muted">
+              A gateway is the industrial PC physically at this site that sends real readings to the platform. Each one gets its own real
+              credential here — no Railway or hosting configuration needed.
+            </p>
+            {detail.gateways.length > 0 ? (
+              <DataTable
+                wide={false}
+                rows={detail.gateways}
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> }
+                ]}
+              />
+            ) : null}
+            <CreateGatewayForm siteId={site.id} />
             <h3>Add a device</h3>
             <p className="muted">A device is the physical piece of equipment — a sensor, controller, or gateway.</p>
             <CreateDeviceForm siteId={site.id} />

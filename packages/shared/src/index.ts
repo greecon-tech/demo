@@ -280,6 +280,21 @@ export interface Device {
   placementNote?: string;
 }
 
+// One real industrial PC/gateway at a site. Its `id` is what a device's optional `gatewayId`
+// points at; its own credential (never sent back after creation — see EdgeGatewayWithSecret) is
+// what lets that specific box authenticate to POST /telemetry/ingest without needing any
+// Railway/hosting-level configuration per client (docs/14-edge-hardware-deployment.md).
+export interface EdgeGateway {
+  id: string;
+  tenantId: string;
+  siteId: string;
+  name: string;
+  status: StatusLabel;
+  lastSeenUtc?: string;
+  softwareVersion?: string;
+  secureIdentityStatus: "placeholder" | "provisioned" | "revoked";
+}
+
 export const pointCapabilities = ["read", "write", "read_write"] as const;
 export type PointCapability = (typeof pointCapabilities)[number];
 

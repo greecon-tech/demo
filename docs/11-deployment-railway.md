@@ -6,20 +6,19 @@ Railway hosts the initial pilot: it deploys straight from GitHub using the exist
 
 By default, keep the API service **without** a public domain — only reachable over Railway's private network, called only by the web service. This is still the right default: nothing needs the API to be public until a real edge device (an industrial PC at a farm site) needs to reach it directly.
 
-**If you do need that** (see "Connecting a real edge device" below), it's now safe to give the API a public domain too: `docs/07-security-and-rbac.md`'s old self-asserted `x-user-role` header trust is disabled outright on a production deployment (`NODE_ENV=production`, set by the Dockerfile) — an unauthenticated request gets rejected, not a free role. The one narrow exception is `POST /telemetry/ingest` with a real device secret, scoped to exactly that route and one tenant — see below.
+**If you do need that** (see "Connecting a real edge device" below), it's now safe to give the API a public domain too: `docs/07-security-and-rbac.md`'s old self-asserted `x-user-role` header trust is disabled outright on a production deployment (`NODE_ENV=production`, set by the Dockerfile) — an unauthenticated request gets rejected, not a free role. The one narrow exception is `POST /telemetry/ingest` with a real device secret, scoped to exactly that one route and one gateway's own tenant — see below.
 
 ## Connecting a real edge device
 
-Once a real sensor's industrial PC needs to send readings from outside Railway's network:
+Once a real sensor's industrial PC needs to send readings from outside Railway's network, this is entirely a one-time step on the `api` service plus a couple of clicks in the app — no per-client Railway configuration:
 
-1. Generate a random secret (anything long and unguessable works — a UUID is fine).
-2. On the `api` service's Variables, add:
-   - `EDGE_INGEST_TOKEN` → the secret from step 1.
-   - `EDGE_INGEST_TENANT_ID` → the real tenant's ID this device is allowed to send data for (find it via the platform's `/platform` page, or ask whoever created the tenant).
-3. On the `api` service's Settings → Networking, click **Generate Domain** (the same step the `web` service already has).
-4. On the edge box itself, set `EDGE_TOKEN` in `/etc/greecon/edge.env` to the same secret from step 1, and `API_URL` to the api service's new public URL — see `docs/14-edge-hardware-deployment.md` for the rest of that setup.
+1. On the `api` service's Settings → Networking, click **Generate Domain** (the same step the `web` service already has) — needed once, ever, not per client or per gateway.
+2. Log into the app as that client (or as a Greecon team member), open the site's own page, and use the **"Add gateway"** form. It generates a real secret for this specific gateway and shows it exactly once.
+3. On the edge box itself, set `EDGE_TOKEN` in `/etc/greecon/edge.env` to that secret, and `API_URL` to the api service's public URL — see `docs/14-edge-hardware-deployment.md` for the rest of that setup.
 
-Both `EDGE_INGEST_TOKEN` and `EDGE_INGEST_TENANT_ID` must be set together; either one missing disables this path entirely rather than falling back to anything less secure.
+Every gateway gets its own secret this way, scoped to its own tenant only — onboarding a second, third, or hundredth client's device needs nothing beyond step 2 above, repeated on their own site.
+
+**Legacy path, still supported:** a single `EDGE_INGEST_TOKEN`/`EDGE_INGEST_TENANT_ID` variable pair on the `api` service, shared by every gateway in one fixed tenant, was the only option before per-gateway credentials existed. Still works if already configured — both must be set together, either one missing disables it entirely — but a new deployment should use the "Add gateway" form above instead, since this pair can't support more than one client's tenant at all.
 
 ## One-time setup, in the Railway dashboard
 

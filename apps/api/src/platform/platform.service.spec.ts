@@ -335,6 +335,27 @@ describe("PlatformService", () => {
     });
   });
 
+  describe("gateway provisioning", () => {
+    it("blocks a viewer from creating a gateway", async () => {
+      await expect(platform.createGateway({ siteId: SITE_ID, name: "Test Gateway" }, VIEWER)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("creates a gateway with a real one-time secret and lists it back scoped to its site", async () => {
+      const { gateway, secret } = await platform.createGateway({ siteId: SITE_ID, name: "Farm Gateway" }, OWNER);
+
+      expect(gateway.siteId).toBe(SITE_ID);
+      expect(gateway.secureIdentityStatus).toBe("provisioned");
+      // 32 random bytes, hex-encoded — this is the credential the edge box authenticates with,
+      // never stored anywhere except as a hash (see gateway-secret.ts).
+      expect(secret).toMatch(/^[0-9a-f]{64}$/);
+      expect(platform.listGateways(OWNER, SITE_ID).map((candidate) => candidate.id)).toContain(gateway.id);
+    });
+
+    it("blocks creating a gateway on a site that belongs to a different tenant", async () => {
+      await expect(platform.createGateway({ siteId: SITE_ID, name: "Cross-tenant gateway" }, OTHER_TENANT)).rejects.toThrow(ForbiddenException);
+    });
+  });
+
   describe("user provisioning", () => {
     it("blocks a viewer from creating a user", async () => {
       await expect(platform.createUser({ name: "New Person", email: "new.person@greecon.earth", role: "operator" }, VIEWER)).rejects.toThrow(
