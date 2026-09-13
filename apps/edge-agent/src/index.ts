@@ -12,10 +12,11 @@ const siteId = process.env.SITE_ID ?? "22222222-2222-4222-8222-222222222201";
 const gatewayId = process.env.GATEWAY_ID ?? "77777777-7777-4777-8777-777777777701";
 const mqttUrl = process.env.MQTT_URL ?? "mqtt://localhost:1883";
 const apiUrl = process.env.API_URL ?? "http://localhost:4000";
-// The API's RBAC currently trusts a self-asserted x-user-role header (see docs/07-security-and-
-// rbac.md) — there is no separate machine/device credential yet. "operator" is the least-
-// privileged role that still holds telemetry:ingest, matching how a real device identity would
-// be scoped once one exists.
+// Real device credential (docs/07-security-and-rbac.md) — the API only accepts this on POST
+// /telemetry/ingest, scoped server-side to whatever tenant EDGE_INGEST_TENANT_ID names there.
+// Unset (local dev without a real deployment) falls back to the old header-trust path, which the
+// API only still honors when it isn't running in production.
+const edgeToken = process.env.EDGE_TOKEN;
 const apiRole = process.env.API_ROLE ?? "operator";
 const flushIntervalMs = Number(process.env.FLUSH_INTERVAL_MS ?? 10_000);
 
@@ -77,8 +78,7 @@ async function ingest(message: TelemetryMessage): Promise<void> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-user-role": apiRole,
-      "x-tenant-id": tenantId
+      ...(edgeToken ? { "x-edge-device-token": edgeToken } : { "x-user-role": apiRole, "x-tenant-id": tenantId })
     },
     body: JSON.stringify(message)
   });

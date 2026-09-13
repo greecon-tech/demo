@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { hasPermission } from "@greecon/shared";
+import { CreateDeviceForm } from "../../../components/CreateDeviceForm";
+import { CreatePointForm } from "../../../components/CreatePointForm";
 import { DataTable } from "../../../components/DataTable";
 import { ManualControlPanel } from "../../../components/ManualControlPanel";
 import { MetricGrid } from "../../../components/MetricGrid";
@@ -9,6 +11,7 @@ import { Shell } from "../../../components/Shell";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { TimeSeriesChart } from "../../../components/TimeSeriesChart";
 import { apiGet, DEMO_ROLE } from "../../../lib/api";
+import { getSession } from "../../../lib/session";
 import { groupByCanonicalName } from "../../../lib/telemetry-history";
 import { Metric } from "../../../lib/types";
 
@@ -54,7 +57,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
   // irrigation valve toggle) has no meaningful trend to plot, and points sharing a canonical name
   // (rare — usually one device per point) share one chart rather than duplicating it.
   const trendPoints = Array.from(new Map(detail.points.filter((point) => point.capability !== "write").map((point) => [point.canonicalName, point])).values());
-  const canControl = hasPermission(DEMO_ROLE, "command:create");
+  // The real logged-in session's role, not the build-time DEMO_ROLE fallback (which only ever
+  // reflects the caller's identity on the static export — see lib/api.ts's requestHeaders) — this
+  // page previously gated Manual Control by DEMO_ROLE even on a live deployment, so every visitor
+  // saw the same fixed gate regardless of who they actually were logged in as.
+  const session = await getSession();
+  const role = session?.user.role ?? DEMO_ROLE;
+  const canControl = hasPermission(role, "command:create");
+  const canManageDevices = hasPermission(role, "device:manage");
   const deviceName = new Map(detail.devices.map((device) => [device.id, device.name]));
   const controllableTargets = detail.points
     .filter((point) => point.capability === "write" || point.capability === "read_write")
@@ -91,6 +101,20 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
       </Section>
       <Section title="Equipment">
         <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />
+        {canManageDevices ? (
+          <div className="stack">
+            <h3>Add a device</h3>
+            <p className="muted">A device is the physical piece of equipment — a sensor, controller, or gateway.</p>
+            <CreateDeviceForm siteId={site.id} />
+            {detail.devices.length > 0 ? (
+              <>
+                <h3>Add a reading point</h3>
+                <p className="muted">A point is one specific measurement or command a device provides, e.g. its soil moisture reading.</p>
+                <CreatePointForm siteId={site.id} devices={detail.devices} />
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </Section>
       {canControl ? (
         <Section title="Manual Control" aside={<span className="muted">Automatic (rules/AI) is the default mode</span>}>
