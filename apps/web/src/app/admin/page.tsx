@@ -7,8 +7,9 @@ import { Shell } from "../../components/Shell";
 import { requirePermission } from "../../lib/access";
 import { apiGet, DEMO_ROLE } from "../../lib/api";
 import { getSession } from "../../lib/session";
+import { DeleteButton } from "../../components/DeleteButton";
 import { ResetPasswordButton } from "../../components/ResetPasswordButton";
-import { updateUserRoleAction, updateUserStatusAction } from "./actions";
+import { deleteSiteAction, updateUserRoleAction, updateUserStatusAction } from "./actions";
 
 interface Site {
   id: string;
@@ -113,7 +114,21 @@ export default async function AdminPage() {
             { key: "name", label: "Site" },
             { key: "type", label: "Type" },
             { key: "locationName", label: "Location" },
-            { key: "status", label: "Status" }
+            { key: "status", label: "Status" },
+            ...(canManageSites
+              ? [
+                  {
+                    key: "id" as const,
+                    label: "",
+                    render: (site: Site) => (
+                      <DeleteButton
+                        action={deleteSiteAction.bind(null, site.id)}
+                        confirmMessage={`Delete site "${site.name}"? This is blocked while it still has any registered device.`}
+                      />
+                    )
+                  }
+                ]
+              : [])
           ]}
         />
         {canManageSites ? <CreateSiteForm /> : null}

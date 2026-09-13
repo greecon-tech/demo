@@ -754,6 +754,60 @@ referenced by an active automation rule, deleting it doesn't warn about that rul
 (the rule would just stop finding a target). Worth a check-and-warn step once a tenant has enough
 rules for that to be a real risk rather than a theoretical one.
 
+### An audit of every "the API can do this but the page has no button for it" gap
+
+**Gap:** asked, after closing the device/point/gateway delete gap above, whether anything similar
+remained elsewhere — a real endpoint that already existed with no way to trigger it from the UI at
+all. A full pass over every controller against every page turned up four:
+
+- **Acknowledging an alert** — `POST /alerts/:id/acknowledge` existed; the Alerts page only ever
+  displayed alerts read-only, with no way to actually acknowledge one.
+- **Changing an incident's status** — `PATCH /incidents/:id/status` existed; the Incidents table
+  showed status as plain text, not a control.
+- **Deleting a site** — `DELETE /sites/:id` existed (and already correctly blocks deletion while
+  any device is still registered); the Admin page's Sites table had no delete action at all.
+- **Requesting a report export** — worse than merely missing: `reports/page.tsx` had a literal
+  `<button type="button">Queue Export Placeholder</button>` with no `onClick`, no server action,
+  nothing — a real user clicking it would see precisely nothing happen, with no error and no
+  explanation. `POST /reports/exports` (which records a real audit event, though no actual file
+  generation exists yet — the name was honest about that) had been sitting unused since it shipped.
+
+**Fix:** each gap closed with the same pattern already established for devices/points/gateways —
+a small client component per action, calling a real Server Action, showing a real success or error
+outcome. `AcknowledgeAlertButton`, `IncidentStatusSelect` (a plain `<select>` over the five real
+`incidentStatuses`), the `DeleteButton` component reused a third time for sites, and
+`RequestExportForm` replacing the dead placeholder button — its confirmation is honest that the
+request is logged, not that a file is coming, rather than implying more than the system does.
+`alerts/page.tsx` and `reports/page.tsx` gained real Server Actions for the first time, so both
+needed the same static-export twin + `build-static.sh` swap-list treatment every other interactive
+page in this app already has (`docs/12-deployment-github-pages.md`'s static build has no server to
+send a mutation to at all).
+
+**Verified against a real Postgres**: acknowledged a seeded alert and confirmed its status and
+`acknowledged_at` timestamp actually changed in the `alerts` table; moved a seeded incident to
+`resolved` and confirmed it in the `incidents` table; requested a report export and got back a real
+`queued_placeholder` record; attempted to delete a site that still has four devices and got the
+existing 403 back correctly, then created a fresh empty site and deleted it successfully. Also ran
+the full static-export build end-to-end against a real local API (not just to the point this
+sandbox's usual "no live API" wall) and confirmed all 17 pages, including the two newly-swapped
+ones, generate cleanly. Full `tsc`/`next build` passes for both apps; no API changes were needed
+here since every endpoint already existed correctly — this pass was pure UI wiring.
+
+**How to extend further, in rough priority order:**
+- **Assets have zero UI anywhere** — full `GET/POST/PATCH/DELETE /assets` exists and
+  `SiteDetail.assets` is even already fetched by the site page, but nothing ever renders it, and
+  there's no way to create one. Devices can optionally reference an `assetId`, but with no way to
+  create an asset through the UI, that field is effectively dead in practice today.
+- **No page exists for maintenance tasks at all** — `GET/POST/PATCH /maintenance` is fully built
+  and tested, but there is no `/maintenance` route in the web app whatsoever. This is a standalone
+  feature (list + create + close a task), not a quick addition like the four above — worth a
+  dedicated pass.
+- **Rules can't be edited in place** — Automation has create, approve, disable, and delete
+  (`RuleActions.tsx`), but changing an existing rule's condition or action means deleting and
+  recreating it. `PATCH /rules/:id` already supports a real update.
+- **Sites can't be edited** — only created and (now) deleted; renaming a site or fixing its
+  location still has no form, though `PATCH /sites/:id` exists.
+
 ## Still open
 
 ### Manual command targets are not filtered by role/site scope beyond permission

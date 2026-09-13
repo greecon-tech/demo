@@ -64,3 +64,17 @@ export async function createSiteAction(name: string, type: string, locationName:
     return { error: error instanceof Error ? error.message : "Failed to create site." };
   }
 }
+
+// The API blocks this outright (403) while the site still has any registered device — deleting a
+// site cascades through its assets, devices, points, and telemetry history at the database level,
+// so refusing that while equipment is still attached is worth surfacing as a real error here
+// rather than silently doing nothing.
+export async function deleteSiteAction(siteId: string): Promise<{ error?: string }> {
+  try {
+    await apiMutate(`/sites/${siteId}`, "DELETE");
+    revalidatePath("/admin");
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete site." };
+  }
+}

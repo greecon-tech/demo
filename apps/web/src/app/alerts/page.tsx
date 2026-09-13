@@ -1,5 +1,7 @@
-import { hasPermission } from "@greecon/shared";
+import { hasPermission, IncidentStatus } from "@greecon/shared";
+import { AcknowledgeAlertButton } from "../../components/AcknowledgeAlertButton";
 import { DataTable } from "../../components/DataTable";
+import { IncidentStatusSelect } from "../../components/IncidentStatusSelect";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -17,10 +19,15 @@ interface Alert {
 interface Incident {
   id: string;
   title: string;
-  status: string;
+  status: IncidentStatus;
   severity: string;
   investigationNotes?: string;
 }
+
+// This page now binds real Server Actions (acknowledging an alert, changing an incident's
+// status) — see page.static.tsx for the read-only twin used by the GitHub Pages export, and
+// build-static.sh for the swap mechanism (same pattern as automation/admin/sites already use).
+export const dynamic = "force-dynamic";
 
 export default async function AlertsPage() {
   const session = await getSession();
@@ -30,6 +37,7 @@ export default async function AlertsPage() {
   // (docs/12-deployment-github-pages.md); a real session instead just doesn't get this section
   // when its own role lacks the permission — see automation/page.tsx for the same pattern.
   const canReadIncidents = session ? hasPermission(role, "incident:manage") : true;
+  const canAcknowledge = hasPermission(role, "alert:acknowledge");
 
   const [alerts, incidents] = await Promise.all([
     apiGet<Alert[]>("/alerts"),
@@ -45,7 +53,16 @@ export default async function AlertsPage() {
             { key: "severity", label: "Severity", render: (row) => <StatusBadge status={row.severity} /> },
             { key: "title", label: "Alert" },
             { key: "status", label: "Status" },
-            { key: "suggestedAction", label: "Suggested Action" }
+            { key: "suggestedAction", label: "Suggested Action" },
+            ...(canAcknowledge
+              ? [
+                  {
+                    key: "id" as const,
+                    label: "",
+                    render: (row: Alert) => (row.status === "acknowledged" ? null : <AcknowledgeAlertButton alertId={row.id} />)
+                  }
+                ]
+              : [])
           ]}
         />
       </Section>
@@ -56,7 +73,7 @@ export default async function AlertsPage() {
             columns={[
               { key: "title", label: "Incident" },
               { key: "severity", label: "Severity", render: (row) => <StatusBadge status={row.severity} /> },
-              { key: "status", label: "Status" },
+              { key: "status", label: "Status", render: (row) => <IncidentStatusSelect incidentId={row.id} status={row.status} /> },
               { key: "investigationNotes", label: "Notes" }
             ]}
           />

@@ -24,6 +24,10 @@
 #     which has no meaning against a single static HTML file (see page.static.tsx).
 #   settings/page.tsx       — binds the dashboard-customization Server Actions (see
 #     settings/actions.ts).
+#   alerts/page.tsx         — imports AcknowledgeAlertButton/IncidentStatusSelect, which call real
+#     Server Actions (see alerts/actions.ts).
+#   reports/page.tsx        — imports RequestExportForm, which calls the createReportExportAction
+#     Server Action (see reports/actions.ts).
 set -e
 # Disables pathname expansion for the rest of the script: one of the paths below literally
 # contains "[siteId]", which the shell would otherwise try to glob-match as a one-character
@@ -41,6 +45,8 @@ src/app/admin/page.tsx
 src/app/platform/page.tsx
 src/app/analytics/page.tsx
 src/app/settings/page.tsx
+src/app/alerts/page.tsx
+src/app/reports/page.tsx
 src/components/Shell.tsx
 "
 
