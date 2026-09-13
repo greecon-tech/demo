@@ -881,21 +881,46 @@ tbody tr:hover {
 
 .chart-card__svg {
   width: 100%;
-  height: 90px;
+  height: 130px;
   display: block;
+  cursor: crosshair;
 }
 
-.chart-card__axis {
+.chart-card__gridline {
   stroke: var(--line);
   stroke-width: 1;
 }
 
-.chart-card__range {
+.chart-card__tick {
+  fill: var(--faint);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-card__crosshair {
+  stroke: var(--faint);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.chart-card__tooltip {
   display: flex;
   justify-content: space-between;
-  color: var(--faint);
-  font-size: 0.75rem;
-  margin-top: 4px;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-hover-strong);
+  font-size: 0.78rem;
+}
+
+.chart-card__tooltip strong {
+  font-size: 0.85rem;
+}
+
+.chart-card__tooltip span {
+  color: var(--muted);
 }
 
 .dashboard-order-controls {

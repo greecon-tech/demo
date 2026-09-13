@@ -1,8 +1,9 @@
 import { CanonicalPointName } from "@greecon/shared";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
-import { TimeSeriesChart, TimeSeriesPoint } from "../../components/TimeSeriesChart";
+import { TimeSeriesChart } from "../../components/TimeSeriesChart";
 import { apiGet } from "../../lib/api";
+import { groupByCanonicalName } from "../../lib/telemetry-history";
 
 interface TelemetryReading {
   timestampUtc: string;
@@ -71,13 +72,3 @@ export default async function AnalyticsPage() {
   );
 }
 
-function groupByCanonicalName(readings: readonly TelemetryReading[]): Map<string, TimeSeriesPoint[]> {
-  const grouped = new Map<string, TimeSeriesPoint[]>();
-  for (const reading of readings) {
-    if (typeof reading.value !== "number") continue;
-    const series = grouped.get(reading.canonicalName) ?? [];
-    series.push({ timestampUtc: reading.timestampUtc, value: reading.value });
-    grouped.set(reading.canonicalName, series);
-  }
-  return grouped;
-}
