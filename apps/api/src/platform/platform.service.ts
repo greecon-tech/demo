@@ -1027,6 +1027,38 @@ export class PlatformService implements OnModuleInit {
     return { gateway, secret };
   }
 
+  // Safe to delete freely, unlike a site or device with things registered under it — a device's
+  // gatewayId is ON DELETE SET NULL (001_schema.sql), so any device pointed at this gateway just
+  // loses that association rather than being blocked or cascading away. The box itself keeps
+  // running; this only revokes its credential and removes it from the list. There is no way to
+  // read the secret back before this, by design (see gateway-secret.ts) — deleting and creating a
+  // fresh one is also how you'd rotate a compromised or lost credential.
+  async deleteGateway(gatewayId: string, principal: Principal): Promise<{ deleted: true }> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+
+    const gateway = this.requireGateway(gatewayId, principal.tenantId);
+
+    if (this.db.isConfigured()) {
+      await this.db.query(`DELETE FROM edge_gateways WHERE id=$1 AND tenant_id=$2`, [gateway.id, principal.tenantId]);
+    }
+
+    this.gateways = this.gateways.filter((candidate) => candidate.id !== gateway.id);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "gateway.deleted",
+      siteId: gateway.siteId,
+      entityType: "gateway",
+      entityId: gateway.id,
+      beforeMetadata: { name: gateway.name },
+      reason: `Gateway "${gateway.name}" deleted.`
+    });
+
+    return { deleted: true };
+  }
+
   async createSite(input: CreateSiteInput, principal: Principal): Promise<Site> {
     if (!hasPermission(principal.role, "site:manage")) {
       throw new ForbiddenException("Action blocked by access policy.");
@@ -2246,6 +2278,13 @@ export class PlatformService implements OnModuleInit {
     if (!device) throw new NotFoundException("Device not found.");
     if (device.tenantId !== tenantId) throw new ForbiddenException("Device is outside tenant scope.");
     return device;
+  }
+
+  private requireGateway(gatewayId: string, tenantId: string): EdgeGateway {
+    const gateway = this.gateways.find((candidate) => candidate.id === gatewayId);
+    if (!gateway) throw new NotFoundException("Gateway not found.");
+    if (gateway.tenantId !== tenantId) throw new ForbiddenException("Gateway is outside tenant scope.");
+    return gateway;
   }
 
   private requirePoint(pointId: string, tenantId: string): Point {

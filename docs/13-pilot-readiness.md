@@ -719,8 +719,40 @@ succeeds, and confirmed a wrong current password is rejected without changing an
 
 **How to extend further:** a gateway's secret is still all-or-nothing — reading it again means
 generating a new one (there's no "reveal" after the creation screen closes, by design, same as a
-user's temporary password). A "Revoke" action (clear `secret_hash`, forcing a fresh one) is a small,
-natural addition once a real gateway is ever physically replaced or a device is decommissioned.
+user's temporary password). Deleting and re-adding a gateway (see the next entry) is how you'd
+rotate a compromised or lost credential today; a dedicated "Rotate" action that keeps the same
+gateway row and only replaces `secret_hash` would be a small refinement once that's worth it.
+
+### There was no way to remove a device, point, or gateway once added
+
+**Gap:** `POST /devices`, `POST /points`, and `POST /gateways` all shipped with real `DELETE`
+endpoints on the API from the start (`device:manage`) — but nothing in the UI ever called them. A
+device added by mistake, an old sensor that got physically removed from a site, or a gateway that
+needs its credential revoked all had no way to go away again except a raw API call.
+
+**Fix:** each site's own page now lists its devices, reading points, and gateways as real tables
+(previously devices/points only ever appeared inside `SensorMap`'s visual layout, with no
+per-item actions available), each row with a **Delete** button. `DeleteButton.tsx` is a small
+shared client component — a `window.confirm` prompt naming exactly what's being deleted, then the
+same error-surfacing pattern as every other form in this pass — reused for all three rather than
+writing the same confirm/error boilerplate three times (matches the existing pattern in
+`RuleActions.tsx`'s rule delete button). Deleting a device cascades to its own points and telemetry
+history (the expected, unsurprising consequence of decommissioning it); deleting a gateway does
+not cascade at all — a device that referenced it just loses that association (`ON DELETE SET NULL`
+in the schema) and keeps working, since the gateway is only a grouping/credential concept, not
+something a device depends on to function.
+
+**Verified against a real Postgres**: created a gateway, a device, and a point through the live
+API, deleted all three, and confirmed each is gone both from a fresh `GET` and directly in the
+database (not just removed from in-memory state) — 2 new `PlatformService` tests (a gateway
+deletes cleanly and a viewer is blocked from deleting one) — 59 tests passing total — plus full
+`tsc`/`next build` passes for both apps.
+
+**How to extend further:** deleting a device or point currently has no confirmation of what
+depends on it beyond the browser's `window.confirm` text — if a write-capable point is currently
+referenced by an active automation rule, deleting it doesn't warn about that rule before it does
+(the rule would just stop finding a target). Worth a check-and-warn step once a tenant has enough
+rules for that to be a real risk rather than a theoretical one.
 
 ## Still open
 

@@ -354,6 +354,19 @@ describe("PlatformService", () => {
     it("blocks creating a gateway on a site that belongs to a different tenant", async () => {
       await expect(platform.createGateway({ siteId: SITE_ID, name: "Cross-tenant gateway" }, OTHER_TENANT)).rejects.toThrow(ForbiddenException);
     });
+
+    it("deletes a gateway, freeing it up rather than blocking like a site with devices would", async () => {
+      const { gateway } = await platform.createGateway({ siteId: SITE_ID, name: "Gateway To Remove" }, OWNER);
+      expect(platform.listGateways(OWNER, SITE_ID).map((candidate) => candidate.id)).toContain(gateway.id);
+
+      await platform.deleteGateway(gateway.id, OWNER);
+      expect(platform.listGateways(OWNER, SITE_ID).map((candidate) => candidate.id)).not.toContain(gateway.id);
+    });
+
+    it("blocks a viewer from deleting a gateway", async () => {
+      const { gateway } = await platform.createGateway({ siteId: SITE_ID, name: "Gateway For Viewer Test" }, OWNER);
+      await expect(platform.deleteGateway(gateway.id, VIEWER)).rejects.toThrow(ForbiddenException);
+    });
   });
 
   describe("user provisioning", () => {
