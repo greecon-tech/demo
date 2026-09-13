@@ -50,8 +50,13 @@ and Eridon's own real account, kept in two completely separate tenants (`docs/13
 
 - **`demo@greecon.earth` / `demo123`** — sales/marketing only. Sees the seeded fake demo tenant
   (solar/battery/water/farm sites with simulated telemetry) and nothing real. Safe to hand to a
-  prospect; it holds no real permissions over anything real, by construction (it lives in a tenant
-  that only ever contains fake data). Never reuse this simple password for a real client account.
+  prospect: it holds no real permissions over anything real, by construction (it lives in a tenant
+  that only ever contains fake data), and its role is deliberately **operator**, not owner — full
+  read access and Manual Control to show off the product, but no `/admin` or `/platform`, so it
+  can't create other users, change anyone's role, or reset any password (including its own — that
+  needs the `user:manage` permission "operator" doesn't have). Re-running `db:migrate` always puts
+  this account back to `demo123`/operator, even if someone changed either by hand in the meantime.
+  Never reuse this simple password for a real client account.
 - **`eridon.manuka@greecon.earth`** — the real working account, in its own real tenant that starts
   with zero sites/devices until they're actually provisioned via the Admin page. Its password is
   set by hand (not shipped in any migration) — see the password-reset step under "One-time setup"

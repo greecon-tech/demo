@@ -59,9 +59,17 @@ VALUES (
 ON CONFLICT (tenant_id, email) DO UPDATE SET name = EXCLUDED.name, status = EXCLUDED.status, password_hash = EXCLUDED.password_hash;
 
 -- Looked up by (tenant_id, email) rather than assuming the id above is the one that actually took
--- effect — the demo user's real id under this tenant, whatever it is, gets the owner membership.
+-- effect — the demo user's real id under this tenant, whatever it is, gets the membership below.
+--
+-- Deliberately "operator", not "owner": a sales prospect holding this login should be able to see
+-- and operate everything (every read permission, plus command:create for Manual Control) but
+-- never reach /admin or /platform — no creating users, no resetting anyone's password (including
+-- its own, which the "operator" role also structurally can't do, since resetting a password
+-- requires the user:manage permission this role doesn't have — see docs/07-security-and-rbac.md).
+-- This upsert re-applies the role on every rerun, so a demo account someone manually promoted or
+-- re-passworded gets put back here the next time db:migrate runs.
 INSERT INTO memberships (id, tenant_id, user_id, role)
-SELECT 'ffffffff-ffff-4fff-8fff-ffffffffff03', u.tenant_id, u.id, 'owner'
+SELECT 'ffffffff-ffff-4fff-8fff-ffffffffff03', u.tenant_id, u.id, 'operator'
 FROM users u
 WHERE u.tenant_id = '11111111-1111-4111-8111-111111111111' AND u.email = 'demo@greecon.earth'
 ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role;
