@@ -25,10 +25,25 @@ export async function apiGet<T>(path: string, role: DemoRole = DEMO_ROLE): Promi
   });
 
   if (!response.ok) {
-    throw new Error(`Greecon API request failed: ${role} ${path} -> ${response.status}`);
+    const detail = await response.text().catch(() => "");
+    throw new Error(`Greecon API request failed: ${role} ${path} -> ${response.status} ${detail.slice(0, 300)}`);
   }
 
-  return response.json() as Promise<T>;
+  return parseJsonResponse<T>(response, role, "GET", path);
+}
+
+// Reads the body as text first rather than a bare response.json() — an empty or non-JSON body
+// (e.g. a proxy/gateway error page, or a route that unexpectedly returned nothing) previously
+// crashed the whole page with an opaque "Unexpected end of JSON input" and no indication of which
+// request or what the server actually sent back, which made a real misconfiguration undiagnosable
+// from the browser alone.
+async function parseJsonResponse<T>(response: Response, role: DemoRole, method: string, path: string): Promise<T> {
+  const raw = await response.text();
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`Greecon API returned an unreadable body: ${role} ${method} ${path} -> ${response.status}. Raw: ${raw.slice(0, 300) || "(empty)"}`);
+  }
 }
 
 /** Mutations only work against a live server (Railway/GCP) — the static GitHub Pages export
@@ -46,7 +61,7 @@ export async function apiMutate<T>(path: string, method: "POST" | "PATCH" | "PUT
   }
 
   if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
+  return parseJsonResponse<T>(response, role, method, path);
 }
 
 /** Real identity, when there is one, always wins over an explicitly-passed role — a caller
