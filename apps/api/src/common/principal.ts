@@ -83,6 +83,25 @@ export function edgeDeviceIngestPrincipal(tenantId: string): Principal {
   };
 }
 
+/** Granted only by PrincipalGuard, only for the couple of routes that must work with no session at
+ * all — logging in (there is no token to present yet) and the health check (meant to be probed
+ * with no credentials). Neither AuthController.login nor HealthController.health reads
+ * request.principal at all, so this exists purely to satisfy RbacGuard/TenantStatusGuard without
+ * crashing on `undefined`; isPlatformAdmin: true is what lets TenantStatusGuard's existing
+ * platform-admin bypass apply here too, since neither of these two routes has a real tenant to
+ * check the status of. This never grants any real authorization — it is not attached to a session,
+ * not signed, and nothing checks it for a permission (RbacGuard already lets both routes through
+ * before even looking at the principal, since neither has @RequirePermissions). */
+export function publicRoutePrincipal(): Principal {
+  return {
+    tenantId: "public",
+    userId: "anonymous",
+    role: "viewer",
+    email: "anonymous@public",
+    isPlatformAdmin: true
+  };
+}
+
 function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0];
   return value;
