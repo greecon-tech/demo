@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { hasPermission } from "@greecon/shared";
+import { CreateAssetForm } from "../../../components/CreateAssetForm";
 import { CreateDeviceForm } from "../../../components/CreateDeviceForm";
 import { CreateGatewayForm } from "../../../components/CreateGatewayForm";
 import { CreatePointForm } from "../../../components/CreatePointForm";
@@ -16,7 +17,7 @@ import { apiGet, DEMO_ROLE } from "../../../lib/api";
 import { getSession } from "../../../lib/session";
 import { groupByCanonicalName } from "../../../lib/telemetry-history";
 import { Metric } from "../../../lib/types";
-import { deleteDeviceAction, deleteGatewayAction, deletePointAction } from "./actions";
+import { deleteAssetAction, deleteDeviceAction, deleteGatewayAction, deletePointAction } from "./actions";
 
 interface SiteDetail {
   site: { id: string; name: string; type: string; locationName: string; status: string; edgeStatus: string };
@@ -69,6 +70,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
   const role = session?.user.role ?? DEMO_ROLE;
   const canControl = hasPermission(role, "command:create");
   const canManageDevices = hasPermission(role, "device:manage");
+  const canManageAssets = hasPermission(role, "asset:manage");
   const deviceName = new Map(detail.devices.map((device) => [device.id, device.name]));
   const controllableTargets = detail.points
     .filter((point) => point.capability === "write" || point.capability === "read_write")
@@ -105,6 +107,32 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
       </Section>
       <Section title="Equipment">
         <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />
+        {canManageAssets ? (
+          <div className="stack">
+            <h3>Assets</h3>
+            <p className="muted">
+              An asset groups related devices under one physical or logical unit — a pump station, a battery bank, an irrigation zone.
+              Optional: devices work fine with no asset at all.
+            </p>
+            {detail.assets.length > 0 ? (
+              <DataTable
+                wide={false}
+                rows={detail.assets}
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "type", label: "Type" },
+                  { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> },
+                  {
+                    key: "id",
+                    label: "",
+                    render: (row) => <DeleteButton action={deleteAssetAction.bind(null, site.id, row.id)} confirmMessage={`Delete asset "${row.name}"? This cannot be undone.`} />
+                  }
+                ]}
+              />
+            ) : null}
+            <CreateAssetForm siteId={site.id} />
+          </div>
+        ) : null}
         {canManageDevices ? (
           <div className="stack">
             <h3>Gateways</h3>
@@ -156,7 +184,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
                 ]}
               />
             ) : null}
-            <CreateDeviceForm siteId={site.id} />
+            <CreateDeviceForm siteId={site.id} assets={detail.assets} />
             {detail.devices.length > 0 ? (
               <>
                 <h3>Reading points</h3>

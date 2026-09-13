@@ -27,6 +27,21 @@ export async function createRuleAction(input: RuleFormInput): Promise<{ error?: 
   return {};
 }
 
+// UpdateRuleDto (unlike CreateRuleDto) doesn't accept siteId or triggerType at all — a rule's
+// site and trigger type are fixed at creation — and the API's ValidationPipe rejects any request
+// carrying a property its DTO doesn't declare, so those two must be left out here rather than
+// just being harmlessly ignored.
+export async function updateRuleAction(ruleId: string, input: RuleFormInput): Promise<{ error?: string }> {
+  const { name, priority, conditions, constraints, actions, executionMode, explanationTemplate, rollbackBehavior } = input;
+  try {
+    await apiMutate(`/rules/${ruleId}`, "PATCH", { name, priority, conditions, constraints, actions, executionMode, explanationTemplate, rollbackBehavior });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to update rule." };
+  }
+  revalidatePath("/automation");
+  return {};
+}
+
 export async function setRuleApprovalAction(ruleId: string, approvalState: "draft" | "approved" | "disabled", reason: string): Promise<{ error?: string }> {
   try {
     await apiMutate(`/rules/${ruleId}/approval`, "PATCH", { approvalState, reason });

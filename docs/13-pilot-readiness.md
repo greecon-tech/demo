@@ -793,20 +793,71 @@ sandbox's usual "no live API" wall) and confirmed all 17 pages, including the tw
 ones, generate cleanly. Full `tsc`/`next build` passes for both apps; no API changes were needed
 here since every endpoint already existed correctly — this pass was pure UI wiring.
 
-**How to extend further, in rough priority order:**
-- **Assets have zero UI anywhere** — full `GET/POST/PATCH/DELETE /assets` exists and
-  `SiteDetail.assets` is even already fetched by the site page, but nothing ever renders it, and
-  there's no way to create one. Devices can optionally reference an `assetId`, but with no way to
-  create an asset through the UI, that field is effectively dead in practice today.
-- **No page exists for maintenance tasks at all** — `GET/POST/PATCH /maintenance` is fully built
-  and tested, but there is no `/maintenance` route in the web app whatsoever. This is a standalone
-  feature (list + create + close a task), not a quick addition like the four above — worth a
-  dedicated pass.
-- **Rules can't be edited in place** — Automation has create, approve, disable, and delete
-  (`RuleActions.tsx`), but changing an existing rule's condition or action means deleting and
-  recreating it. `PATCH /rules/:id` already supports a real update.
-- **Sites can't be edited** — only created and (now) deleted; renaming a site or fixing its
-  location still has no form, though `PATCH /sites/:id` exists.
+**How to extend further, in rough priority order (at the time):** assets had zero UI anywhere,
+there was no maintenance page at all, rules couldn't be edited in place, and sites couldn't be
+edited — all four closed in the next pass below.
+
+### Assets, Maintenance, Rule editing, and Site editing — the last four "no UI at all" gaps
+
+**Gap:** four more real endpoints with nothing to trigger them, found by the same audit as the
+entry above:
+
+- **Assets had zero UI anywhere.** `GET/POST/PATCH/DELETE /assets` was fully built and
+  `SiteDetail.assets` was already fetched by the site page — but nothing ever rendered it, and
+  there was no way to create one. Devices can optionally reference an `assetId`, but with no way to
+  create an asset at all, that field was effectively dead.
+- **No page existed for maintenance tasks at all.** `GET/POST/PATCH /maintenance` was fully built
+  and tested; there was no `/maintenance` route in the web app whatsoever.
+- **Rules couldn't be edited in place.** Automation had create, approve, disable, and delete, but
+  changing an existing rule meant deleting and recreating it, even though `PATCH /rules/:id`
+  already supported a real update.
+- **Sites couldn't be edited.** Only created and deleted; fixing a typo in a site's name or
+  location had no form, even though `PATCH /sites/:id` already existed.
+
+**Fix:**
+- **Assets**: a real "Assets" table + create form on each site's page (`CreateAssetForm.tsx`),
+  gated on `asset:manage`, with delete via the same shared `DeleteButton`. `CreateDeviceForm` also
+  gained an optional "Asset" selector — the `assetId` field on a device finally has a way to
+  actually get set.
+- **Maintenance**: a new `/maintenance` page — open tasks, a create-task form, and completed tasks,
+  each open task with a "Mark complete" control (with an optional completion note) and each
+  completed one with "Reopen." Gated on `maintenance:manage` (the same permission the API requires
+  for both reading and writing this domain — there's no separate read-only view). Added to the
+  sidebar nav and, since this is the first page with real Server Actions in this exact spot, to
+  `build-static.sh`'s swap list with its own read-only twin.
+- **Rule editing**: `RuleForm` now accepts an optional `editingRule` prop — when set, it pre-fills
+  from the existing rule and calls a new `updateRuleAction` (`PATCH /rules/:id`) instead of create.
+  A new `extractSingleConditionFormValues` (the exact reverse of the existing
+  `buildSingleConditionRule`) only succeeds for a rule the simple form can actually represent — one
+  condition, one action, no constraints, keyed off a point reading. A rule outside that shape
+  (hand-authored via the API, or genuinely multi-condition) shows "Not editable here" instead of
+  silently mangling it into something it wasn't. `RulesSection.tsx` is the new coordinating client
+  component that owns which rule (if any) is being edited, since one shared `RuleForm` instance
+  sits below the table rather than one per row. One real gotcha caught by verifying against the
+  live API rather than trusting the types: `UpdateRuleDto` doesn't accept `siteId` or `triggerType`
+  at all (unlike create), and the API's `ValidationPipe` rejects any request carrying a property its
+  DTO doesn't declare — `updateRuleAction` has to leave both out explicitly rather than forwarding
+  the same shape `createRuleAction` sends.
+- **Site editing**: `EditableSiteRow.tsx` replaces the plain `DataTable` row for Sites on the Admin
+  page with an inline edit toggle (three fields need to change together behind one Save button,
+  which doesn't fit `DataTable`'s one-column-at-a-time render model) — click Edit, the row becomes
+  editable, Save calls a new `updateSiteAction`, Cancel discards.
+
+**Verified against a real Postgres**: created and deleted a real asset; created a maintenance task
+and marked it complete with a note, confirming both landed in `maintenance_tasks`; renamed a site
+and confirmed the new name persisted; and — the one that actually needed this level of rigor —
+sent the exact stripped-down payload `updateRuleAction` produces straight at `PATCH /rules/:id` and
+confirmed a real seeded rule's name and condition value both changed and persisted, at `version` 2.
+Also re-ran the full static-export build end-to-end against a real local API and confirmed all 18
+pages, including the newly-swapped maintenance page, generate cleanly. Full `tsc`/`next build`
+passes for both apps; no further API changes were needed beyond what this pass's own verification
+required getting right in the web layer.
+
+**How to extend further:** assets have no edit form of their own (only create/delete) — a real
+gap once a pilot needs to rename one or move it between sites. The "not editable here" rules are
+still fully manageable via approve/disable/delete, just not through this simple form — a real
+multi-condition editor is a substantially bigger UI than anything built so far, worth its own pass
+once a tenant actually has rules that need it.
 
 ## Still open
 

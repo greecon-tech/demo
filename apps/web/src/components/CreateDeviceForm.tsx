@@ -4,13 +4,19 @@ import { FormEvent, useState, useTransition } from "react";
 import { deviceProtocols } from "@greecon/shared";
 import { createDeviceAction } from "../app/sites/[siteId]/actions";
 
+interface AssetOption {
+  id: string;
+  name: string;
+}
+
 // A client component so a real failure shows up as a message instead of silently doing nothing —
 // same reasoning as CreateSiteForm.
-export function CreateDeviceForm({ siteId }: { siteId: string }) {
+export function CreateDeviceForm({ siteId, assets = [] }: { siteId: string; assets?: readonly AssetOption[] }) {
   const [name, setName] = useState("");
   const [deviceType, setDeviceType] = useState("");
   const [protocol, setProtocol] = useState("modbus");
   const [driverType, setDriverType] = useState("");
+  const [assetId, setAssetId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -20,7 +26,7 @@ export function CreateDeviceForm({ siteId }: { siteId: string }) {
     setError(null);
     setCreated(false);
     startTransition(async () => {
-      const result = await createDeviceAction(siteId, name, deviceType, protocol, driverType);
+      const result = await createDeviceAction(siteId, name, deviceType, protocol, driverType, assetId);
       if (result.error) {
         setError(result.error);
         return;
@@ -57,6 +63,19 @@ export function CreateDeviceForm({ siteId }: { siteId: string }) {
           Driver
           <input value={driverType} onChange={(event) => setDriverType(event.target.value)} placeholder="e.g. greecon-edge-driver-modbus" required />
         </label>
+        {assets.length > 0 ? (
+          <label>
+            Asset
+            <select value={assetId} onChange={(event) => setAssetId(event.target.value)}>
+              <option value="">None</option>
+              {assets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
       <div className="rule-form__footer">
         <button type="submit" disabled={isPending}>

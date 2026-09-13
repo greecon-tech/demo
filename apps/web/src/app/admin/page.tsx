@@ -2,14 +2,14 @@ import { GREECON_COMPANY, GREECON_DOMAIN, hasPermission, UserRole, userRoles } f
 import { DataTable } from "../../components/DataTable";
 import { CreateSiteForm } from "../../components/CreateSiteForm";
 import { CreateUserForm } from "../../components/CreateUserForm";
+import { EditableSiteRow } from "../../components/EditableSiteRow";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { requirePermission } from "../../lib/access";
 import { apiGet, DEMO_ROLE } from "../../lib/api";
 import { getSession } from "../../lib/session";
-import { DeleteButton } from "../../components/DeleteButton";
 import { ResetPasswordButton } from "../../components/ResetPasswordButton";
-import { deleteSiteAction, updateUserRoleAction, updateUserStatusAction } from "./actions";
+import { updateUserRoleAction, updateUserStatusAction } from "./actions";
 
 interface Site {
   id: string;
@@ -108,29 +108,28 @@ export default async function AdminPage() {
         />
       </Section>
       <Section title="Sites">
-        <DataTable
-          rows={sites}
-          columns={[
-            { key: "name", label: "Site" },
-            { key: "type", label: "Type" },
-            { key: "locationName", label: "Location" },
-            { key: "status", label: "Status" },
-            ...(canManageSites
-              ? [
-                  {
-                    key: "id" as const,
-                    label: "",
-                    render: (site: Site) => (
-                      <DeleteButton
-                        action={deleteSiteAction.bind(null, site.id)}
-                        confirmMessage={`Delete site "${site.name}"? This is blocked while it still has any registered device.`}
-                      />
-                    )
-                  }
-                ]
-              : [])
-          ]}
-        />
+        {sites.length > 0 ? (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Site</th>
+                  <th>Type</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                  {canManageSites ? <th></th> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {sites.map((site) => (
+                  <EditableSiteRow key={site.id} site={site} canManage={canManageSites} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="empty-state">No records available</div>
+        )}
         {canManageSites ? <CreateSiteForm /> : null}
       </Section>
       <Section title="Roles">

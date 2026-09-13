@@ -2,13 +2,27 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { CanonicalPointName, canonicalPoints, RuleAction, RuleCondition, RuleExecutionMode, ruleExecutionModes, RulePriorityLevel, rulePriorityLevels } from "@greecon/shared";
-import { createRuleAction } from "../app/automation/actions";
-import { buildSingleConditionRule } from "../app/automation/rule-form-utils";
+import { createRuleAction, updateRuleAction } from "../app/automation/actions";
+import { buildSingleConditionRule, SingleConditionRuleFormValues } from "../app/automation/rule-form-utils";
 
 const operators: ReadonlyArray<RuleCondition["operator"]> = ["lt", "lte", "gt", "gte", "eq", "neq"];
 const actionTypes: ReadonlyArray<RuleAction["type"]> = ["command", "alert", "recommendation"];
 
-export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: string }> }) {
+interface EditingRule extends SingleConditionRuleFormValues {
+  id: string;
+}
+
+export function RuleForm({
+  sites,
+  editingRule,
+  onCancelEdit,
+  onSaved
+}: {
+  sites: ReadonlyArray<{ id: string; name: string }>;
+  editingRule?: EditingRule | null;
+  onCancelEdit?: () => void;
+  onSaved?: () => void;
+}) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -40,9 +54,11 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
     });
 
     startTransition(async () => {
-      const result = await createRuleAction(rule);
+      const result = editingRule ? await updateRuleAction(editingRule.id, rule) : await createRuleAction(rule);
       if (result.error) {
         setError(result.error);
+      } else if (editingRule) {
+        onSaved?.();
       } else {
         setSuccess(true);
         formElement.reset();
@@ -50,16 +66,34 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
     });
   }
 
+  const defaults = editingRule ?? {
+    siteId: "",
+    name: "",
+    priority: "optimization" as RulePriorityLevel,
+    point: canonicalPoints[0],
+    operator: "lt" as RuleCondition["operator"],
+    conditionValue: "",
+    actionType: "command" as RuleAction["type"],
+    targetCanonicalName: canonicalPoints[0],
+    actionValue: "",
+    message: "",
+    executionMode: "simulation" as RuleExecutionMode,
+    explanationTemplate: "",
+    rollbackBehavior: ""
+  };
+
   return (
-    <form className="rule-form" onSubmit={submit}>
+    // Keyed on which rule (or "create") is being edited so React remounts the form — these are
+    // uncontrolled inputs (defaultValue), which only take a new initial value on a fresh mount.
+    <form className="rule-form" onSubmit={submit} key={editingRule?.id ?? "create"}>
       <div className="rule-form__grid">
         <label>
           Name
-          <input name="name" required placeholder="Stop irrigation when tank is low" />
+          <input name="name" required placeholder="Stop irrigation when tank is low" defaultValue={defaults.name} />
         </label>
         <label>
           Site
-          <select name="siteId" defaultValue="">
+          <select name="siteId" defaultValue={defaults.siteId ?? ""}>
             <option value="">All sites</option>
             {sites.map((site) => (
               <option value={site.id} key={site.id}>
@@ -70,7 +104,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Priority
-          <select name="priority" defaultValue="optimization">
+          <select name="priority" defaultValue={defaults.priority}>
             {rulePriorityLevels.map((level) => (
               <option value={level} key={level}>
                 {level}
@@ -80,7 +114,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Execution mode
-          <select name="executionMode" defaultValue="simulation">
+          <select name="executionMode" defaultValue={defaults.executionMode}>
             {ruleExecutionModes.map((mode) => (
               <option value={mode} key={mode}>
                 {mode}
@@ -94,7 +128,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
       <div className="rule-form__grid">
         <label>
           Point
-          <select name="point" defaultValue={canonicalPoints[0]}>
+          <select name="point" defaultValue={defaults.point}>
             {canonicalPoints.map((point) => (
               <option value={point} key={point}>
                 {point}
@@ -104,7 +138,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Operator
-          <select name="operator" defaultValue="lt">
+          <select name="operator" defaultValue={defaults.operator}>
             {operators.map((operator) => (
               <option value={operator} key={operator}>
                 {operator}
@@ -114,7 +148,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Value
-          <input name="conditionValue" required placeholder="28" />
+          <input name="conditionValue" required placeholder="28" defaultValue={defaults.conditionValue} />
         </label>
       </div>
 
@@ -122,7 +156,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
       <div className="rule-form__grid">
         <label>
           Action type
-          <select name="actionType" defaultValue="command">
+          <select name="actionType" defaultValue={defaults.actionType}>
             {actionTypes.map((type) => (
               <option value={type} key={type}>
                 {type}
@@ -132,7 +166,7 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Target point
-          <select name="targetCanonicalName" defaultValue={canonicalPoints[0]}>
+          <select name="targetCanonicalName" defaultValue={defaults.targetCanonicalName ?? canonicalPoints[0]}>
             {canonicalPoints.map((point) => (
               <option value={point} key={point}>
                 {point}
@@ -142,29 +176,34 @@ export function RuleForm({ sites }: { sites: ReadonlyArray<{ id: string; name: s
         </label>
         <label>
           Value
-          <input name="actionValue" placeholder="ON" />
+          <input name="actionValue" placeholder="ON" defaultValue={defaults.actionValue} />
         </label>
       </div>
       <label>
         Message
-        <input name="message" required placeholder="Start irrigation because soil moisture is low." />
+        <input name="message" required placeholder="Start irrigation because soil moisture is low." defaultValue={defaults.message} />
       </label>
 
       <div className="rule-form__grid">
         <label>
           Explanation
-          <input name="explanationTemplate" required placeholder="Why this rule exists, in plain language." />
+          <input name="explanationTemplate" required placeholder="Why this rule exists, in plain language." defaultValue={defaults.explanationTemplate} />
         </label>
         <label>
           Rollback behavior
-          <input name="rollbackBehavior" required placeholder="What happens if this needs to be undone." />
+          <input name="rollbackBehavior" required placeholder="What happens if this needs to be undone." defaultValue={defaults.rollbackBehavior} />
         </label>
       </div>
 
       <div className="rule-form__footer">
         <button type="submit" disabled={isPending}>
-          {isPending ? "Creating…" : "Create rule (as draft)"}
+          {isPending ? "Saving…" : editingRule ? "Save changes" : "Create rule (as draft)"}
         </button>
+        {editingRule ? (
+          <button type="button" className="button-ghost" disabled={isPending} onClick={onCancelEdit}>
+            Cancel
+          </button>
+        ) : null}
         {error ? <p className="rule-actions__error">{error}</p> : null}
         {success ? <p className="muted">Rule created as a draft — approve it above to enable it.</p> : null}
       </div>

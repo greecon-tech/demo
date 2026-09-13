@@ -3,19 +3,44 @@
 import { revalidatePath } from "next/cache";
 import { apiMutate } from "../../../lib/api";
 
+export async function createAssetAction(siteId: string, name: string, type: string): Promise<{ error?: string; created?: boolean }> {
+  if (!name.trim()) {
+    return { error: "Name is required." };
+  }
+
+  try {
+    await apiMutate("/assets", "POST", { siteId, name, type });
+    revalidatePath(`/sites/${siteId}`);
+    return { created: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to add asset." };
+  }
+}
+
+export async function deleteAssetAction(siteId: string, assetId: string): Promise<{ error?: string }> {
+  try {
+    await apiMutate(`/assets/${assetId}`, "DELETE");
+    revalidatePath(`/sites/${siteId}`);
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete asset." };
+  }
+}
+
 export async function createDeviceAction(
   siteId: string,
   name: string,
   deviceType: string,
   protocol: string,
-  driverType: string
+  driverType: string,
+  assetId: string
 ): Promise<{ error?: string; created?: boolean }> {
   if (!name.trim() || !deviceType.trim() || !driverType.trim()) {
     return { error: "Name, device type, and driver are required." };
   }
 
   try {
-    await apiMutate("/devices", "POST", { siteId, name, deviceType, protocol, driverType });
+    await apiMutate("/devices", "POST", { siteId, name, deviceType, protocol, driverType, assetId: assetId || undefined });
     revalidatePath(`/sites/${siteId}`);
     return { created: true };
   } catch (error) {

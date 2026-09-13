@@ -65,6 +65,20 @@ export async function createSiteAction(name: string, type: string, locationName:
   }
 }
 
+export async function updateSiteAction(siteId: string, name: string, type: string, locationName: string): Promise<{ error?: string }> {
+  if (!name.trim() || !locationName.trim()) {
+    return { error: "Name and location are required." };
+  }
+
+  try {
+    await apiMutate(`/sites/${siteId}`, "PATCH", { name, type, locationName });
+    revalidatePath("/admin");
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to update site." };
+  }
+}
+
 // The API blocks this outright (403) while the site still has any registered device — deleting a
 // site cascades through its assets, devices, points, and telemetry history at the database level,
 // so refusing that while equipment is still attached is worth surfacing as a real error here
