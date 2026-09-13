@@ -4,6 +4,7 @@ import { CreateDeviceForm } from "../../../components/CreateDeviceForm";
 import { CreateGatewayForm } from "../../../components/CreateGatewayForm";
 import { CreatePointForm } from "../../../components/CreatePointForm";
 import { DataTable } from "../../../components/DataTable";
+import { DeleteButton } from "../../../components/DeleteButton";
 import { ManualControlPanel } from "../../../components/ManualControlPanel";
 import { MetricGrid } from "../../../components/MetricGrid";
 import { Section } from "../../../components/Section";
@@ -15,6 +16,7 @@ import { apiGet, DEMO_ROLE } from "../../../lib/api";
 import { getSession } from "../../../lib/session";
 import { groupByCanonicalName } from "../../../lib/telemetry-history";
 import { Metric } from "../../../lib/types";
+import { deleteDeviceAction, deleteGatewayAction, deletePointAction } from "./actions";
 
 interface SiteDetail {
   site: { id: string; name: string; type: string; locationName: string; status: string; edgeStatus: string };
@@ -116,18 +118,67 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
                 rows={detail.gateways}
                 columns={[
                   { key: "name", label: "Name" },
-                  { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> }
+                  { key: "status", label: "Status", render: (row) => <StatusBadge status={row.status} /> },
+                  {
+                    key: "id",
+                    label: "",
+                    render: (row) => (
+                      <DeleteButton
+                        action={deleteGatewayAction.bind(null, site.id, row.id)}
+                        confirmMessage={`Delete gateway "${row.name}"? Any device pointed at it keeps working but loses that association, and this credential stops working immediately.`}
+                      />
+                    )
+                  }
                 ]}
               />
             ) : null}
             <CreateGatewayForm siteId={site.id} />
-            <h3>Add a device</h3>
+            <h3>Devices</h3>
             <p className="muted">A device is the physical piece of equipment — a sensor, controller, or gateway.</p>
+            {detail.devices.length > 0 ? (
+              <DataTable
+                wide={false}
+                rows={detail.devices}
+                columns={[
+                  { key: "name", label: "Name" },
+                  { key: "deviceType", label: "Type" },
+                  { key: "health", label: "Health", render: (row) => <StatusBadge status={row.health} /> },
+                  {
+                    key: "id",
+                    label: "",
+                    render: (row) => (
+                      <DeleteButton
+                        action={deleteDeviceAction.bind(null, site.id, row.id)}
+                        confirmMessage={`Delete device "${row.name}"? This also removes its reading points and telemetry history. This cannot be undone.`}
+                      />
+                    )
+                  }
+                ]}
+              />
+            ) : null}
             <CreateDeviceForm siteId={site.id} />
             {detail.devices.length > 0 ? (
               <>
-                <h3>Add a reading point</h3>
+                <h3>Reading points</h3>
                 <p className="muted">A point is one specific measurement or command a device provides, e.g. its soil moisture reading.</p>
+                {detail.points.length > 0 ? (
+                  <DataTable
+                    wide={false}
+                    rows={detail.points.map((point) => ({ ...point, deviceName: deviceName.get(point.deviceId) ?? point.deviceId }))}
+                    columns={[
+                      { key: "label", label: "Label" },
+                      { key: "deviceName", label: "Device" },
+                      { key: "capability", label: "Capability" },
+                      {
+                        key: "id",
+                        label: "",
+                        render: (row) => (
+                          <DeleteButton action={deletePointAction.bind(null, site.id, row.id)} confirmMessage={`Delete reading point "${row.label}"? This cannot be undone.`} />
+                        )
+                      }
+                    ]}
+                  />
+                ) : null}
                 <CreatePointForm siteId={site.id} devices={detail.devices} />
               </>
             ) : null}

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Query, Req } from "@nestjs/common";
 import { RequirePermissions } from "../../common/require-permissions.decorator";
 import { RequestWithPrincipal } from "../../common/principal";
 import { PlatformService } from "../../platform/platform.service";
@@ -21,5 +21,11 @@ export class GatewaysController {
   @RequirePermissions("device:manage")
   create(@Body() body: CreateGatewayDto, @Req() request: RequestWithPrincipal) {
     return this.platform.createGateway(body, request.principal);
+  }
+
+  @Delete(":gatewayId")
+  @RequirePermissions("device:manage")
+  remove(@Param("gatewayId") gatewayId: string, @Req() request: RequestWithPrincipal) {
+    return this.platform.deleteGateway(gatewayId, request.principal);
   }
 }

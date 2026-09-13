@@ -23,6 +23,16 @@ export async function createDeviceAction(
   }
 }
 
+export async function deleteDeviceAction(siteId: string, deviceId: string): Promise<{ error?: string }> {
+  try {
+    await apiMutate(`/devices/${deviceId}`, "DELETE");
+    revalidatePath(`/sites/${siteId}`);
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete device." };
+  }
+}
+
 interface CreatedGateway {
   id: string;
   name: string;
@@ -39,6 +49,16 @@ export async function createGatewayAction(siteId: string, name: string): Promise
     return { gateway: result.gateway, secret: result.secret };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to add gateway." };
+  }
+}
+
+export async function deleteGatewayAction(siteId: string, gatewayId: string): Promise<{ error?: string }> {
+  try {
+    await apiMutate(`/gateways/${gatewayId}`, "DELETE");
+    revalidatePath(`/sites/${siteId}`);
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete gateway." };
   }
 }
 
@@ -60,5 +80,15 @@ export async function createPointAction(
     return { created: true };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to add point." };
+  }
+}
+
+export async function deletePointAction(siteId: string, pointId: string): Promise<{ error?: string }> {
+  try {
+    await apiMutate(`/points/${pointId}`, "DELETE");
+    revalidatePath(`/sites/${siteId}`);
+    return {};
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to delete point." };
   }
 }
