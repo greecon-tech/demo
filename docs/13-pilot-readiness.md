@@ -469,6 +469,17 @@ $$;`, the standard idempotent pattern for a constraint Postgres has no native `I
 Every other `ALTER TABLE` across every migration already used `ADD COLUMN IF NOT EXISTS`, so this
 was the only one exposed to it.
 
+**Second bug, found the same way once `001` was fixed and `006` actually got to run for the first
+time:** it failed partway through with `duplicate key value violates unique constraint
+"users_tenant_id_email_key"`. The original version keyed its upserts on `id` (`ON CONFLICT (id) DO
+NOTHING`) and matched Eridon's tenant move by comparing against a hardcoded old-tenant-id constant
+— safe only if a previous attempt either fully committed or fully rolled back, never true here in
+practice. Rewrote it to resolve the real tenant/user ids from `tenants.domain` and `users.email` at
+each step (never trusting a hardcoded UUID actually matched) and to upsert the demo user by its
+real natural key, `(tenant_id, email)` — the constraint that was actually firing — rather than only
+guarding against a re-used `id`. Converges to the same end state regardless of exactly how much of
+a previous attempt already applied.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site
