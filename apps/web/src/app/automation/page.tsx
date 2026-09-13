@@ -1,8 +1,7 @@
-import { hasPermission } from "@greecon/shared";
+import { AutomationRule, hasPermission } from "@greecon/shared";
 import { DataTable } from "../../components/DataTable";
 import { ManualControlPanel, ManualControlTarget } from "../../components/ManualControlPanel";
-import { RuleActions } from "../../components/RuleActions";
-import { RuleForm } from "../../components/RuleForm";
+import { RulesSection } from "../../components/RulesSection";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { StatusBadge } from "../../components/StatusBadge";
@@ -15,15 +14,6 @@ import { getSession } from "../../lib/session";
 // error. Forcing fully dynamic rendering avoids the ambiguity. (The static export build never
 // sees this file — see apps/web/scripts/build-static.sh.)
 export const dynamic = "force-dynamic";
-
-interface Rule {
-  id: string;
-  name: string;
-  priority: string;
-  executionMode: string;
-  approvalState: string;
-  explanationTemplate: string;
-}
 
 interface AuditEvent {
   id: string;
@@ -65,7 +55,7 @@ export default async function AutomationPage() {
   const canReadAudit = hasPermission(role, "audit:read");
 
   const [rules, auditEvents, sites, devices, points] = await Promise.all([
-    apiGet<Rule[]>("/rules"),
+    apiGet<AutomationRule[]>("/rules"),
     canReadAudit ? apiGet<AuditEvent[]>("/audit") : Promise.resolve([]),
     apiGet<SiteOption[]>("/sites"),
     apiGet<DeviceOption[]>("/devices"),
@@ -90,26 +80,22 @@ export default async function AutomationPage() {
 
   return (
     <Shell title="Automation" subtitle="Rules, simulations, command safety, and human-readable action history.">
-      <Section title="Rules">
-        <DataTable
-          rows={rules}
-          columns={[
-            { key: "name", label: "Rule" },
-            { key: "priority", label: "Priority" },
-            { key: "executionMode", label: "Execution" },
-            { key: "approvalState", label: "Approval", render: (row) => <StatusBadge status={row.approvalState} /> },
-            { key: "explanationTemplate", label: "Explanation" },
-            ...(canManageRules
-              ? [{ key: "id" as const, label: "Manage", render: (row: Rule) => <RuleActions ruleId={row.id} ruleName={row.name} approvalState={row.approvalState} /> }]
-              : [])
-          ]}
-        />
-      </Section>
       {canManageRules ? (
-        <Section title="Create Rule" aside={<span className="muted">Owner / Admin only</span>}>
-          <RuleForm sites={sites} />
+        <RulesSection rules={rules} sites={sites} />
+      ) : (
+        <Section title="Rules">
+          <DataTable
+            rows={rules}
+            columns={[
+              { key: "name", label: "Rule" },
+              { key: "priority", label: "Priority" },
+              { key: "executionMode", label: "Execution" },
+              { key: "approvalState", label: "Approval", render: (row) => <StatusBadge status={row.approvalState} /> },
+              { key: "explanationTemplate", label: "Explanation" }
+            ]}
+          />
         </Section>
-      ) : null}
+      )}
       <div className="split">
         <Section title="Automation History">
           {canReadAudit ? (

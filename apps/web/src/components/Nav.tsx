@@ -40,6 +40,18 @@ const navItems: ReadonlyArray<{ href: string; label: string; icon: ReactNode; re
       </>
     )
   },
+  {
+    href: "/maintenance",
+    label: "Maintenance",
+    requires: "maintenance:manage",
+    icon: (
+      <>
+        <path d="M9.5 1.7 12 4.2l-2 2-2.5-2.5 2-2Z" />
+        <path d="M7.4 3.8 2.2 9c-.5.5-.5 1.3 0 1.8l3 3c.5.5 1.3.5 1.8 0l5.2-5.2" />
+        <path d="M3.5 13.5 2 15" />
+      </>
+    )
+  },
   { href: "/analytics", label: "Analytics", icon: <path d="M2.5 13.5v-4M7 13.5v-7M11.5 13.5v-9" /> },
   {
     href: "/devices",

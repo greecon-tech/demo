@@ -1,4 +1,4 @@
-import { CanonicalPointName, RuleAction, RuleCondition, RuleExecutionMode, RulePriorityLevel } from "@greecon/shared";
+import { AutomationRule, CanonicalPointName, RuleAction, RuleCondition, RuleExecutionMode, RulePriorityLevel } from "@greecon/shared";
 import { RuleFormInput } from "./actions";
 
 export interface SingleConditionRuleFormValues {
@@ -40,6 +40,33 @@ export function buildSingleConditionRule(input: SingleConditionRuleFormValues): 
     executionMode: input.executionMode,
     explanationTemplate: input.explanationTemplate,
     rollbackBehavior: input.rollbackBehavior
+  };
+}
+
+// The reverse of buildSingleConditionRule, used to pre-fill RuleForm when editing an existing
+// rule. Returns null for anything the simple form can't represent (more than one condition or
+// action, any constraint, or a condition keyed off a derived state rather than a point reading) —
+// those rules still display, approve, disable, and delete fine, they just aren't editable here.
+export function extractSingleConditionFormValues(rule: AutomationRule): SingleConditionRuleFormValues | null {
+  if (rule.conditions.length !== 1 || rule.constraints.length !== 0 || rule.actions.length !== 1) return null;
+  const condition = rule.conditions[0];
+  const action = rule.actions[0];
+  if (!condition || !action || !condition.point) return null;
+
+  return {
+    siteId: rule.siteId,
+    name: rule.name,
+    priority: rule.priority,
+    point: condition.point,
+    operator: condition.operator,
+    conditionValue: String(condition.value),
+    actionType: action.type,
+    targetCanonicalName: action.targetCanonicalName,
+    actionValue: action.value !== undefined ? String(action.value) : "",
+    message: action.message,
+    executionMode: rule.executionMode,
+    explanationTemplate: rule.explanationTemplate,
+    rollbackBehavior: rule.rollbackBehavior
   };
 }
 
