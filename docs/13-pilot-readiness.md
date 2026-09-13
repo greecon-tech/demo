@@ -529,24 +529,54 @@ tabs (unlike the tenant-wide Analytics page) — a reasonable v1 given a single-
 wants "how's this been lately," but the same range-tab pattern from Analytics would extend cleanly
 if that's ever needed there too.
 
+### The cloud API had no way to be reached from a real remote edge site, and provisioning still needed raw commands
+
+**Gap:** the API was deliberately never exposed on the public internet, because its RBAC used to
+trust a self-asserted role header on any request with no session token — a publicly reachable API
+would have let anyone impersonate any role with zero credentials. That was the right call while
+nothing needed the API to be public, but it meant a real edge box at an actual remote farm site had
+no public URL to send telemetry to at all, and — separately — creating the Device/Point records
+that box would need still required raw API calls, since Admin only had forms for users and sites.
+
+**Fix, two parts:**
+- **Production header-fallback lockout.** `PrincipalGuard` now rejects an unauthenticated request
+  outright (`401`) whenever `NODE_ENV=production` (set by both Dockerfiles) — the old
+  `x-user-role`/`x-tenant-id` fallback only still works outside production (local dev, and the
+  static GitHub Pages export's local build step). This had to land *before* the API could safely
+  get a public domain at all.
+- **A narrow, scoped exception for real telemetry.** `POST /telemetry/ingest` additionally accepts
+  a shared device secret (`x-edge-device-token` against `EDGE_INGEST_TOKEN`), granting a synthetic
+  principal for exactly that route and one fixed tenant (`EDGE_INGEST_TENANT_ID`) — the route match
+  happens inside `PrincipalGuard` itself, so the same header on any other route falls straight into
+  the lockout above. `apps/edge-agent` sends this instead of the old role header when `EDGE_TOKEN`
+  is set. See `docs/07-security-and-rbac.md` and `docs/14-edge-hardware-deployment.md` for the full
+  picture, including the private-tunnel alternative for a client that can't have any public
+  endpoint at all.
+- **Device/Point creation forms**, on each site's own page (`/sites/:siteId`, gated on
+  `device:manage`) — provisioning the exact hardware records a real sensor needs no longer requires
+  a raw API call, closing the last piece of "there's no site/device/point provisioning UI" from the
+  provisioning-CRUD entry earlier in this doc.
+- **Found in the same pass:** the site page's Manual Control gate (`canControl`) was computed from
+  `DEMO_ROLE` — the *build-time* fallback role, meant only for the static export — instead of the
+  real logged-in session's role. On the live SSR deployment this meant every visitor saw the same
+  fixed gate regardless of who they actually were logged in as (not a security hole — the API still
+  enforced the real role independently — but a real user-facing bug: a viewer could see a Manual
+  Control panel that would then fail on submit). Fixed to read the real session, matching every
+  other page.
+
+**Verified:** 4 new `PrincipalGuard` unit tests (production rejects an unauthenticated request;
+edge token grants access only on the exact route; wrong token rejected; the path/token pair does
+nothing when `EDGE_INGEST_TOKEN` isn't configured) — 46 tests passing total — plus full
+`tsc`/`next build` passes for both apps and the static export.
+
+**How to extend further:** the device secret is a single shared value across the whole tenant, not
+per-gateway — a real fleet (`docs/15-master-roadmap.md`, Phase 2, "Real device identity for machine
+traffic") needs a signed credential or mTLS cert per gateway, checked against a table of registered
+devices, so compromising one site's edge box doesn't affect any other site. That's a materially
+bigger change than this pilot needed and should wait until there's more than a handful of real
+sites to justify it.
+
 ## Still open
-
-### The cloud API isn't reachable from a remote edge site
-
-**Gap:** the API is deliberately not exposed on the public internet (`docs/07-security-and-
-rbac.md`, `docs/11-deployment-railway.md`) — its RBAC trusts a self-asserted role header with no
-real per-request authentication, so making it publicly reachable would let anyone impersonate any
-role. That's the right call for the web app, but it means an edge box at an actual remote farm
-site has no public URL to send telemetry to.
-
-**How to fix, short-term:** a WireGuard/Tailscale tunnel from the edge box into the same private
-network as the API — no code changes, documented as the pilot-scale answer in
-`docs/14-edge-hardware-deployment.md`. **Longer-term, for a real fleet:** replace the shared
-role-header trust model for machine traffic specifically with a real device credential (a signed
-JWT or mTLS client cert per gateway, checked against a table of provisioned gateways) so the
-telemetry ingestion path can be exposed without inheriting the human-auth model's current
-weakness. That's a materially bigger change than the tunnel and should wait until there's more
-than a handful of pilot sites to justify it.
 
 ### Manual command targets are not filtered by role/site scope beyond permission
 

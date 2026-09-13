@@ -33,14 +33,27 @@ unrelated to which human is logged in) — reusing it for both would silently br
 other depending on deployment target.
 
 A request that presents a token must have it verify, full stop — an invalid or expired token is
-rejected outright, never silently downgraded to trusting a header instead. The only time a header
-(`x-user-role`/`x-tenant-id`) is still trusted is when **no token is presented at all**: the static
-GitHub Pages export (which has no server to log in against, and bakes in a fixed demo role per
-build — see `docs/12-deployment-github-pages.md`) and local dev/test convenience. This is safe
-specifically because the API is never publicly reachable either way (see "Secrets" and
-`docs/11-deployment-railway.md`) — real authentication exists so that a real deployment has actual
-per-user identity and accountability, not because the header path was otherwise exploitable by an
-external caller.
+rejected outright, never silently downgraded to trusting a header instead. A header
+(`x-user-role`/`x-tenant-id`) is trusted when **no token is presented at all**, but only outside
+production (`NODE_ENV !== "production"`, unset by both Dockerfiles' local/CI equivalents): the
+static GitHub Pages export (which has no server to log in against and bakes in a fixed demo role
+per build — `docs/12-deployment-github-pages.md`, built by running the API locally with no public
+exposure) and local dev/test convenience. **On a real deployment (Railway, GCP —
+`NODE_ENV=production` from both Dockerfiles), this fallback is disabled outright**: a request with
+no valid session token gets `401 Unauthorized`, full stop, not a role assigned from whatever it
+happened to send. This matters now that the API can have a public domain (below) — an unauthenticated
+header from literally anyone on the internet must never grant anything.
+
+**The one exception, scoped tightly:** `POST /telemetry/ingest` also accepts a shared device
+secret (`x-edge-device-token`, matched against `EDGE_INGEST_TOKEN`) for a real edge box that has no
+user to log in as — see `docs/14-edge-hardware-deployment.md`. This grants a synthetic "operator"
+principal for a single fixed tenant (`EDGE_INGEST_TENANT_ID`) and *only* for that one route —
+`PrincipalGuard` checks the exact path and method before granting it, so the same header on any
+other route falls straight into the production lockout above. Both env vars must be set together;
+either one missing disables the path entirely. This is a genuinely simpler, less isolated
+credential than the real per-gateway identity `docs/15-master-roadmap.md`'s Phase 2 describes (a
+leaked token can inject fake telemetry for one tenant, though never read anything or issue a
+command) — an explicit trade-off for a first real pilot with one site, not the end state.
 
 There is no *self-service* password reset flow yet (that needs a real email-sending integration
 this deployment doesn't have) — an owner/admin can reset another user's password from the Admin

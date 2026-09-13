@@ -37,28 +37,45 @@ telemetry flowing into the platform.
 
 ## Before you start: can this box actually reach the API?
 
-This is the part that's easy to miss. The cloud API is **deliberately not exposed on the public
-internet** — `docs/07-security-and-rbac.md` and `docs/11-deployment-railway.md` are explicit about
-this, because the API's RBAC trusts a self-asserted role header with no real per-request
-authentication yet. A publicly reachable API would let anyone impersonate any role. So an edge box
-sitting at a remote farm site has no public URL to call.
+This is the part that's easy to miss. The API's RBAC used to fall back to trusting a self-asserted
+role header on any request with no session token at all — safe only because the API was never
+reachable from outside its own deployment. Now that a real edge box needs to reach it from a farm
+site, that fallback is disabled outright on a production deployment (`docs/07-security-and-rbac.md`)
+— there is no header an outside caller can send that grants anything, on any route.
 
-For a pilot, the simplest fix that requires no code changes: put the edge box on the same private
-network as the API via a WireGuard or Tailscale tunnel.
+**The current approach — a public API with a device-only credential.** The API's Railway (or GCP)
+domain is made public, but the only thing an unauthenticated caller can ever do with it is
+`POST /telemetry/ingest`, and only with the right shared secret:
 
-1. Deploy Tailscale (or WireGuard) on the machine/network where the API actually runs (Railway
-   private networking or your GCP VPC).
+1. Generate a random secret and set it as `EDGE_INGEST_TOKEN` on the API service, alongside
+   `EDGE_INGEST_TENANT_ID` set to this pilot's real tenant ID (from the platform's Admin page, or
+   `/platform` if you're a Greecon platform administrator). Both must be set together — either one
+   missing disables this path entirely, it does not silently fall back to anything less secure.
+2. Give the API service a public domain (same step as the web service already has one).
+3. Set `EDGE_TOKEN` in this box's `edge.env` to the same secret from step 1, and `API_URL` to the
+   API's new public URL.
+
+The edge agent sends that secret as `x-edge-device-token`; the API checks it only on that one
+route, for that one tenant, and rejects it — same as an unauthenticated request — everywhere else.
+This is deliberately simpler than a private tunnel for a first real pilot with one site; a
+compromised token can inject fake telemetry for this one tenant but cannot read anything, issue
+commands, or reach any other route.
+
+**Alternative — a private tunnel, no public exposure at all.** If a client's compliance posture
+rules out any public endpoint, put the edge box on the same private network as the API via
+WireGuard or Tailscale instead, and skip `EDGE_INGEST_TOKEN` entirely:
+
+1. Deploy Tailscale (or WireGuard) on the machine/network where the API actually runs (a
+   Tailscale subnet-router service alongside it on Railway, or your GCP VPC directly).
 2. Install the same client on the edge box during provisioning (`apt install tailscale` on
    Ubuntu, then `tailscale up`, or the equivalent WireGuard peer config).
 3. Set `API_URL` in `edge.env` to the API's address **on that private network**, not a public
-   hostname.
+   hostname, and leave `EDGE_TOKEN` unset — the agent falls back to the header-trust path, which
+   is fine on a network nothing external can reach.
 
 If the edge box happens to be on the same LAN/VPC as the API already (e.g. a pilot running
-everything in one building), you can skip the tunnel and point `API_URL` straight at the API's
+everything in one building), you can skip the tunnel too and point `API_URL` straight at the API's
 internal address.
-
-Do not solve this by giving the API a public domain "just for the edge box." That reopens the
-exact hole `docs/07-security-and-rbac.md` calls out.
 
 ## Step 1 — Flash the OS
 
@@ -104,11 +121,15 @@ systemd services (only `greecon-edge-agent` is enabled by default).
 sudo nano /etc/greecon/edge.env
 ```
 
-Fill in the three blanks from `infra/edge/edge.env.example`:
+Fill in the blanks from `infra/edge/edge.env.example`:
 
-- `SITE_ID` — this site's UUID from the platform's `sites` table.
-- `GATEWAY_ID` — this gateway's UUID from `edge_gateways`.
-- `API_URL` — the API's address on the private network/tunnel from the prerequisite step.
+- `TENANT_ID`/`SITE_ID` — create the site on the platform's Admin page first if it doesn't exist
+  yet, then copy its ID from there (no more reading it out of Postgres by hand).
+- `GATEWAY_ID` — this gateway's UUID; there's no provisioning UI for gateways yet, so this still
+  needs inserting directly (`edge_gateways` table) until that exists.
+- `API_URL` — the API's public URL (device-token approach) or its private-network address (tunnel
+  approach) — see the prerequisite step above for which one applies.
+- `EDGE_TOKEN` — only for the device-token approach; leave unset for the tunnel approach.
 
 ## Step 5 — Start it
 

@@ -30,6 +30,8 @@ export function jwtSecret(): string | undefined {
 
 export interface RequestWithPrincipal {
   headers: Record<string, string | string[] | undefined>;
+  path: string;
+  method: string;
   principal: Principal;
 }
 
@@ -61,6 +63,22 @@ export function principalFromHeaders(headers: Record<string, string | string[] |
     userId,
     role: safeRole,
     email,
+    isPlatformAdmin: false
+  };
+}
+
+/** Granted only by PrincipalGuard, only for POST /telemetry/ingest, only when the caller presents
+ * the shared EDGE_INGEST_TOKEN — the "simple lock" chosen for the first real farm's industrial PC
+ * over a private tunnel (docs/14-edge-hardware-deployment.md). Scoped to a single fixed tenant
+ * (the token isn't per-gateway yet — see docs/15-master-roadmap.md, Phase 2, "Real device identity
+ * for machine traffic") and to "operator"'s permissions, which is more than telemetry:ingest alone
+ * needs; the route match in PrincipalGuard is what actually keeps this narrow, not the role. */
+export function edgeDeviceIngestPrincipal(tenantId: string): Principal {
+  return {
+    tenantId,
+    userId: "edge-device",
+    role: "operator",
+    email: "edge-device@greecon.earth",
     isPlatformAdmin: false
   };
 }
