@@ -1,6 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import jwt from "jsonwebtoken";
-import { edgeDeviceIngestPrincipal, JwtClaims, jwtSecret, principalFromClaims, principalFromHeaders, RequestWithPrincipal } from "./principal";
+import { edgeDeviceIngestPrincipal, JwtClaims, jwtSecret, principalFromClaims, principalFromHeaders, publicRoutePrincipal, RequestWithPrincipal } from "./principal";
 
 // Session tokens travel in a dedicated header, not the standard Authorization one — on GCP,
 // Authorization already carries the Cloud Run service-to-service ID token (see authHeader() in
@@ -48,6 +48,17 @@ export class PrincipalGuard implements CanActivate {
       }
     }
 
+    // A couple of routes must work with no session at all, by definition: logging in (there is no
+    // token to present yet — that's the whole point of the request) and the health check (meant to
+    // be probed with no credentials at all). Left unguarded, the production lockout below rejects a
+    // login attempt itself before it ever reaches AuthController, which is a much worse bug than
+    // the one this lockout was meant to fix — nobody could log in at all, not just an unauthorized
+    // caller.
+    if (isPublicRoute(request)) {
+      request.principal = publicRoutePrincipal();
+      return true;
+    }
+
     // No token of any kind. The header-based fallback (x-user-role/x-tenant-id) is trusted only
     // outside production — local dev convenience, and the static GitHub Pages export, which builds
     // by running the API locally with no public exposure at all (docs/12-deployment-github-pages.
@@ -66,6 +77,15 @@ export class PrincipalGuard implements CanActivate {
 
 function isEdgeIngestRequest(request: RequestWithPrincipal): boolean {
   return request.method === "POST" && request.path === "/telemetry/ingest";
+}
+
+const PUBLIC_ROUTES: ReadonlyArray<{ method: string; path: string }> = [
+  { method: "POST", path: "/auth/login" },
+  { method: "GET", path: "/health" }
+];
+
+function isPublicRoute(request: RequestWithPrincipal): boolean {
+  return PUBLIC_ROUTES.some((route) => route.method === request.method && route.path === request.path);
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {

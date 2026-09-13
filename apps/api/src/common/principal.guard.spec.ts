@@ -115,6 +115,33 @@ describe("PrincipalGuard", () => {
     });
   });
 
+  describe("public routes", () => {
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+    });
+
+    it("lets an unauthenticated POST /auth/login through in production instead of 401ing before it reaches the controller", () => {
+      const guard = new PrincipalGuard();
+      const context = contextWithHeaders({}, { path: "/auth/login", method: "POST" });
+
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it("lets an unauthenticated GET /health through in production", () => {
+      const guard = new PrincipalGuard();
+      const context = contextWithHeaders({}, { path: "/health", method: "GET" });
+
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it("does not extend the same pass to a lookalike route", () => {
+      const guard = new PrincipalGuard();
+      const context = contextWithHeaders({}, { path: "/auth/session", method: "GET" });
+
+      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    });
+  });
+
   describe("edge device ingest token", () => {
     beforeEach(() => {
       process.env.NODE_ENV = "production";

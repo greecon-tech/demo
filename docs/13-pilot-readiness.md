@@ -576,6 +576,36 @@ devices, so compromising one site's edge box doesn't affect any other site. That
 bigger change than this pilot needed and should wait until there's more than a handful of real
 sites to justify it.
 
+### The production lockout above broke login for every real user, not just unauthorized callers
+
+**Gap:** `PrincipalGuard`'s production lockout (added in the same pass as the entry above) rejects
+any request with no session token outright once `NODE_ENV=production`. `POST /auth/login` is
+exactly that kind of request — there is no token yet, that's the whole point of calling it — so
+every single login attempt, for every account (not just `demo@greecon.earth`), started failing
+with a 401 before it ever reached `AuthController`. `GET /health` had the same problem. This
+surfaced as the demo account's password looking broken even though the database had the right
+password hash the whole time — the real failure (`"Authentication required."`) never reached the
+screen because `apps/web/src/app/login/actions.ts` maps any non-2xx response to a generic
+`"Invalid email or password."`, masking the actual cause. Found by reading `auth.controller.ts`
+against the guard chain after confirming directly against the live database that the demo
+account's credentials were already correct — the bug was upstream of the password check entirely.
+
+**Fix:** `PrincipalGuard` now recognizes `POST /auth/login` and `GET /health` as public routes and
+lets them through before the production-lockout check, assigning a harmless sentinel principal
+(`publicRoutePrincipal()` in `principal.ts`, `isPlatformAdmin: true` so it also clears
+`TenantStatusGuard`'s check with no code change needed there) — neither controller actually reads
+`request.principal`, so this exists purely to keep the guard chain from crashing on it, not to
+grant any real authorization.
+
+**Verified:** 3 new `PrincipalGuard` tests (login and health both let through unauthenticated in
+production; a lookalike route like `/auth/session` is not accidentally included in the same pass)
+— 49 tests passing total — plus full `tsc` passes for both apps.
+
+**How to extend further:** any future route that must genuinely work with no session (a public
+status page, a webhook receiver) needs the same explicit allowlist entry in `PrincipalGuard` — this
+is deliberately not a broad "skip auth for GET requests" rule, since that would be exactly the kind
+of accidental exposure the production lockout exists to prevent.
+
 ## Still open
 
 ### Manual command targets are not filtered by role/site scope beyond permission
