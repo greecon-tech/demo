@@ -633,6 +633,48 @@ for real (rather than asking a client to make the change themselves) needs a del
 "impersonate/act as this client" flow, which is a bigger, more sensitive feature than this pass —
 worth building once there's a second real client whose admin actually needs Greecon's help this way.
 
+### A brand new tenant's Overview page was a wall of meaningless empty cards, and create-forms failed silently
+
+**Gap:** two related first-impression problems, both found by actually looking at what Eridon's own
+real tenant sees today with zero sites provisioned yet (the exact state every future client starts
+in too):
+
+- `buildMetrics()` on the Overview page (`apps/web/src/app/page.tsx`) pushed a "Tank level," "Line
+  pressure," "Soil moisture," and "Edge connectivity" card unconditionally, even when the tenant has
+  no water/agriculture equipment or sites at all — unlike the energy cards just above them, which
+  were already correctly skipped when not applicable. A brand new tenant saw four cards reading "—"
+  with no indication anything was simply not set up yet, rather than broken.
+- `createSiteAction`, `createDeviceAction`, and `createPointAction` were plain server actions
+  returning `void` — a real failure (a duplicate name, the API being briefly unreachable) either
+  crashed to Next.js's generic error page or, for a bad form value, silently did nothing at all.
+  Only `createUserAction` (and its `CreateUserForm`) had ever gotten the proper error-handling
+  treatment.
+
+**Fix:**
+- The four metric cards above are now gated on the underlying value actually being defined, exactly
+  like the energy cards — a tenant with no water/agriculture telemetry simply doesn't get those
+  cards, the same "customizable per deployment" rule already documented for energy metering.
+- When a tenant has zero sites, the Overview page now shows a **"Getting started"** guide instead of
+  an empty metrics/sites/alerts layout: three numbered steps (create a site, add its devices and
+  points, connect real hardware), linking straight to `/admin` when the caller has `site:manage`, or
+  a plain note to ask a Greecon admin when they don't.
+- `createSiteAction`/`createDeviceAction`/`createPointAction` now return `{ error?, created? }`
+  instead of `void`, and `CreateSiteForm`/`CreateDeviceForm`/`CreatePointForm` became client
+  components (matching `CreateUserForm`'s existing pattern) that show a real error message on
+  failure and a plain-text confirmation ("Site created.", "Device added.", "Point added.") on
+  success — nothing about submitting one of these forms was ever silent or uninformative again.
+
+**Verified:** full `tsc`/`next build` passes for the SSR path, plus a rendered screenshot of the new
+"Getting started" panel (numbered steps, muted explanatory copy, and a real call-to-action button)
+confirming it reads clearly rather than just compiling.
+
+**How to extend further:** `updateUserRoleAction` and `updateUserStatusAction` (the inline role
+selector and enable/disable button in the Users table) still return `void` with no error surfaced —
+lower risk than create (a role change against an existing row rarely fails), but the same treatment
+would close the gap completely if it's ever worth it. A per-site "0 devices yet" callout on the site
+detail page itself (beyond the existing empty `SensorMap` message) is a natural next increment once
+there's a second real client actually hitting that state.
+
 ## Still open
 
 ### Manual command targets are not filtered by role/site scope beyond permission

@@ -51,13 +51,16 @@ export async function resetUserPasswordAction(userId: string): Promise<{ error?:
   }
 }
 
-export async function createSiteAction(formData: FormData): Promise<void> {
-  const name = formData.get("name");
-  const type = formData.get("type");
-  const locationName = formData.get("locationName");
-  if (typeof name !== "string" || typeof type !== "string" || typeof locationName !== "string") return;
-  if (!name.trim() || !locationName.trim()) return;
+export async function createSiteAction(name: string, type: string, locationName: string): Promise<{ error?: string; created?: boolean }> {
+  if (!name.trim() || !locationName.trim()) {
+    return { error: "Name and location are required." };
+  }
 
-  await apiMutate("/sites", "POST", { name, type, locationName });
-  revalidatePath("/admin");
+  try {
+    await apiMutate("/sites", "POST", { name, type, locationName });
+    revalidatePath("/admin");
+    return { created: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to create site." };
+  }
 }

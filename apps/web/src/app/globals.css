@@ -841,6 +841,13 @@ tbody tr:hover {
   font-size: 0.8rem;
 }
 
+.form-success {
+  margin: 4px 0 0;
+  color: var(--ok-fg);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
 .login-error {
   margin: 0;
   color: var(--critical-fg);
@@ -938,6 +945,47 @@ tbody tr:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.getting-started {
+  display: grid;
+  gap: 20px;
+  list-style: none;
+  counter-reset: getting-started-step;
+  padding: 0;
+  margin: 0;
+}
+
+.getting-started li {
+  counter-increment: getting-started-step;
+  display: grid;
+  gap: 6px;
+  padding: 16px 16px 16px 52px;
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+
+.getting-started li::before {
+  content: counter(getting-started-step);
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.getting-started .button-ghost {
+  justify-self: start;
+  margin-top: 4px;
 }
 
 .credential-notice {

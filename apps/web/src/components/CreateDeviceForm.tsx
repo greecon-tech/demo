@@ -1,37 +1,78 @@
+"use client";
+
+import { FormEvent, useState, useTransition } from "react";
 import { deviceProtocols } from "@greecon/shared";
 import { createDeviceAction } from "../app/sites/[siteId]/actions";
 
-// Plain server-action form, no client JavaScript needed — same reasoning as CreateSiteForm.
+// A client component so a real failure shows up as a message instead of silently doing nothing —
+// same reasoning as CreateSiteForm.
 export function CreateDeviceForm({ siteId }: { siteId: string }) {
+  const [name, setName] = useState("");
+  const [deviceType, setDeviceType] = useState("");
+  const [protocol, setProtocol] = useState("modbus");
+  const [driverType, setDriverType] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [created, setCreated] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setCreated(false);
+    startTransition(async () => {
+      const result = await createDeviceAction(siteId, name, deviceType, protocol, driverType);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setCreated(true);
+      setName("");
+      setDeviceType("");
+      setDriverType("");
+    });
+  }
+
   return (
-    <form action={createDeviceAction.bind(null, siteId)} className="rule-form">
+    <form onSubmit={submit} className="rule-form">
       <div className="rule-form__grid">
         <label>
           Name
-          <input name="name" placeholder="e.g. Soil Moisture Sensor Zone 1" required />
+          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. Soil Moisture Sensor Zone 1" required />
         </label>
         <label>
           Device type
-          <input name="deviceType" placeholder="e.g. soil_moisture_sensor" required />
+          <input value={deviceType} onChange={(event) => setDeviceType(event.target.value)} placeholder="e.g. soil_moisture_sensor" required />
         </label>
         <label>
           Protocol
-          <select name="protocol" defaultValue="modbus">
-            {deviceProtocols.map((protocol) => (
-              <option key={protocol} value={protocol}>
-                {protocol.replace(/_/g, " ")}
+          <select value={protocol} onChange={(event) => setProtocol(event.target.value)}>
+            {deviceProtocols.map((candidate) => (
+              <option key={candidate} value={candidate}>
+                {candidate.replace(/_/g, " ")}
               </option>
             ))}
           </select>
         </label>
         <label>
           Driver
-          <input name="driverType" placeholder="e.g. greecon-edge-driver-modbus" required />
+          <input value={driverType} onChange={(event) => setDriverType(event.target.value)} placeholder="e.g. greecon-edge-driver-modbus" required />
         </label>
       </div>
       <div className="rule-form__footer">
-        <button type="submit">Add device</button>
+        <button type="submit" disabled={isPending}>
+          {isPending ? "Adding…" : "Add device"}
+        </button>
+        {error ? (
+          <p className="rule-actions__error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
+      {created ? (
+        <p className="form-success" role="status">
+          Device added.
+        </p>
+      ) : null}
     </form>
   );
 }
