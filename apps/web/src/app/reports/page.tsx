@@ -1,9 +1,14 @@
 import { DataTable } from "../../components/DataTable";
+import { RequestExportForm } from "../../components/RequestExportForm";
 import { Section } from "../../components/Section";
 import { Shell } from "../../components/Shell";
 import { requirePermission } from "../../lib/access";
 import { apiGet, DEMO_ROLE } from "../../lib/api";
 import { getSession } from "../../lib/session";
+
+// Requesting an export now binds a real Server Action — see page.static.tsx for the read-only
+// twin used by the GitHub Pages export, and build-static.sh for the swap mechanism.
+export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
   const session = await getSession();
@@ -16,17 +21,7 @@ export default async function ReportsPage() {
   return (
     <Shell title="Reports" subtitle="Operational, sustainability, audit, and incident evidence.">
       <Section title="Generate Report">
-        <div className="panel stack">
-          <label>
-            Report type
-            <select defaultValue={templates[0]}>
-              {templates.map((name) => (
-                <option key={name}>{name}</option>
-              ))}
-            </select>
-          </label>
-          <button type="button">Queue Export Placeholder</button>
-        </div>
+        <RequestExportForm templates={templates} />
       </Section>
       <Section title="Available Reports">
         <DataTable rows={rows} columns={[{ key: "name", label: "Report" }, { key: "status", label: "Status" }]} />
