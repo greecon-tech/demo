@@ -1,6 +1,8 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import jwt from "jsonwebtoken";
+import { hashGatewaySecret } from "./gateway-secret";
 import { edgeDeviceIngestPrincipal, JwtClaims, jwtSecret, principalFromClaims, principalFromHeaders, publicRoutePrincipal, RequestWithPrincipal } from "./principal";
+import { DatabaseService } from "../database/database.service";
 
 // Session tokens travel in a dedicated header, not the standard Authorization one — on GCP,
 // Authorization already carries the Cloud Run service-to-service ID token (see authHeader() in
@@ -12,7 +14,9 @@ const EDGE_DEVICE_TOKEN_HEADER = "x-edge-device-token";
 
 @Injectable()
 export class PrincipalGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly db: DatabaseService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
     const token = headerValue(request.headers[SESSION_HEADER]);
 
@@ -34,17 +38,32 @@ export class PrincipalGuard implements CanActivate {
     }
 
     // No session token. A real edge device (an industrial PC at a farm site, reachable over the
-    // open internet — docs/14-edge-hardware-deployment.md) authenticates with a single shared
-    // secret instead of a login, scoped to exactly this one route: the "simple lock" chosen over a
-    // private tunnel for the first real pilot. EDGE_INGEST_TOKEN/EDGE_INGEST_TENANT_ID must both
-    // be explicitly configured — unset (the default) means this path never grants anything.
+    // open internet — docs/14-edge-hardware-deployment.md) authenticates with a device secret
+    // instead of a login, scoped to exactly this one route: the "simple lock" chosen over a
+    // private tunnel for the first real pilot.
     if (isEdgeIngestRequest(request)) {
       const deviceToken = headerValue(request.headers[EDGE_DEVICE_TOKEN_HEADER]);
-      const expectedToken = process.env.EDGE_INGEST_TOKEN;
-      const expectedTenantId = process.env.EDGE_INGEST_TENANT_ID;
-      if (expectedToken && expectedTenantId && deviceToken === expectedToken) {
-        request.principal = edgeDeviceIngestPrincipal(expectedTenantId);
-        return true;
+      if (deviceToken) {
+        // The real path: a per-gateway secret generated through the "Add gateway" form on a
+        // site's own page (apps/api/src/platform/platform.service.ts's createGateway), stored only
+        // as a hash — this is what lets Greecon onboard any number of clients' edge devices
+        // entirely from app.greecon.earth, with no Railway configuration needed per client.
+        const gatewayPrincipal = await this.principalForGatewaySecret(deviceToken);
+        if (gatewayPrincipal) {
+          request.principal = gatewayPrincipal;
+          return true;
+        }
+
+        // Legacy fallback: a single shared secret for one fixed tenant, set as Railway env vars —
+        // kept working for a deployment that configured this before per-gateway credentials
+        // existed. A gateway created through the UI never needs this path. Both env vars must be
+        // set together; either one missing disables this fallback entirely.
+        const expectedToken = process.env.EDGE_INGEST_TOKEN;
+        const expectedTenantId = process.env.EDGE_INGEST_TENANT_ID;
+        if (expectedToken && expectedTenantId && deviceToken === expectedToken) {
+          request.principal = edgeDeviceIngestPrincipal(expectedTenantId);
+          return true;
+        }
       }
     }
 
@@ -72,6 +91,16 @@ export class PrincipalGuard implements CanActivate {
 
     request.principal = principalFromHeaders(request.headers);
     return true;
+  }
+
+  private async principalForGatewaySecret(secret: string) {
+    if (!this.db.isConfigured()) return undefined;
+
+    const result = await this.db.query<{ tenant_id: string }>("SELECT tenant_id FROM edge_gateways WHERE secret_hash = $1", [
+      hashGatewaySecret(secret)
+    ]);
+    const row = result.rows[0];
+    return row ? edgeDeviceIngestPrincipal(row.tenant_id) : undefined;
   }
 }
 

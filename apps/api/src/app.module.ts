@@ -11,6 +11,7 @@ import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { DerivedStatesModule } from "./modules/derived-states/derived-states.module";
 import { DevicesModule } from "./modules/devices/devices.module";
 import { EdgeSyncModule } from "./modules/edge-sync/edge-sync.module";
+import { GatewaysModule } from "./modules/gateways/gateways.module";
 import { HealthModule } from "./modules/health/health.module";
 import { IncidentsModule } from "./modules/incidents/incidents.module";
 import { MaintenanceModule } from "./modules/maintenance/maintenance.module";
@@ -47,6 +48,7 @@ import { PlatformModule } from "./platform/platform.module";
     SitesModule,
     AssetsModule,
     DevicesModule,
+    GatewaysModule,
     PlatformAdminModule,
     PointsModule,
     TelemetryModule,

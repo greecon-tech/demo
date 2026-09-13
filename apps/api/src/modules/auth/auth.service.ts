@@ -99,4 +99,24 @@ export class AuthService {
       }
     };
   }
+
+  // Self-service — any logged-in user changes their own password, no admin/console step needed.
+  // Requiring the current password (rather than just trusting the session) means a browser left
+  // open and logged in can't be used to silently lock the real owner out by changing it to
+  // something only the attacker knows.
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    if (!this.db.isConfigured()) {
+      throw new UnauthorizedException("This deployment has no database configured — there is nothing to update.");
+    }
+
+    const result = await this.db.query<{ password_hash: string | null }>("SELECT password_hash FROM users WHERE id = $1", [userId]);
+    const row = result.rows[0];
+    const valid = row?.password_hash ? await bcrypt.compare(currentPassword, row.password_hash) : false;
+    if (!valid) {
+      throw new UnauthorizedException("Current password is incorrect.");
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await this.db.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newHash, userId]);
+  }
 }

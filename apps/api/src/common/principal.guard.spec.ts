@@ -1,8 +1,9 @@
 import { ExecutionContext, UnauthorizedException } from "@nestjs/common";
 import jwt from "jsonwebtoken";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrincipalGuard } from "./principal.guard";
 import { JwtClaims, RequestWithPrincipal } from "./principal";
+import { DatabaseService } from "../database/database.service";
 
 function contextWithHeaders(
   headers: Record<string, string | string[] | undefined>,
@@ -12,6 +13,16 @@ function contextWithHeaders(
   return {
     switchToHttp: () => ({ getRequest: () => request })
   } as unknown as ExecutionContext;
+}
+
+// Defaults to "no database" so every existing test exercises exactly the same header/token paths
+// as before the per-gateway lookup existed — only the "gateway secret" describe block below passes
+// a configured fake to actually exercise that query.
+function fakeDatabase(configured: boolean, rows: Array<{ tenant_id: string }> = []): DatabaseService {
+  return {
+    isConfigured: () => configured,
+    query: vi.fn().mockResolvedValue({ rows })
+  } as unknown as DatabaseService;
 }
 
 describe("PrincipalGuard", () => {
@@ -38,25 +49,25 @@ describe("PrincipalGuard", () => {
     else process.env.EDGE_INGEST_TENANT_ID = originalEdgeTenant;
   });
 
-  it("falls back to header-based identity when no bearer token is present and this isn't production", () => {
-    const guard = new PrincipalGuard();
+  it("falls back to header-based identity when no bearer token is present and this isn't production", async () => {
+    const guard = new PrincipalGuard(fakeDatabase(false));
     const context = contextWithHeaders({ "x-user-role": "operator" });
     const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.principal.role).toBe("operator");
   });
 
-  it("builds the principal from a valid bearer token's claims, not from any headers sent alongside it", () => {
+  it("builds the principal from a valid bearer token's claims, not from any headers sent alongside it", async () => {
     const claims: JwtClaims = { sub: "user-1", tenantId: "tenant-1", role: "auditor", email: "auditor@greecon.earth" };
     const token = jwt.sign(claims, "test-secret");
-    const guard = new PrincipalGuard();
+    const guard = new PrincipalGuard(fakeDatabase(false));
     // A malicious/stale x-user-role header sent alongside a valid token for a different role
     // must be ignored — the token is the only thing trusted once one is present.
     const context = contextWithHeaders({ "x-greecon-session": token, "x-user-role": "owner" });
     const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.principal).toEqual({
       tenantId: "tenant-1",
       userId: "user-1",
@@ -66,31 +77,31 @@ describe("PrincipalGuard", () => {
     });
   });
 
-  it("carries isPlatformAdmin through from the token's claims when present", () => {
+  it("carries isPlatformAdmin through from the token's claims when present", async () => {
     const claims: JwtClaims = { sub: "user-1", tenantId: "tenant-1", role: "owner", email: "eridon.manuka@greecon.earth", isPlatformAdmin: true };
     const token = jwt.sign(claims, "test-secret");
-    const guard = new PrincipalGuard();
+    const guard = new PrincipalGuard(fakeDatabase(false));
     const context = contextWithHeaders({ "x-greecon-session": token });
     const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(request.principal.isPlatformAdmin).toBe(true);
   });
 
-  it("rejects a bearer token that fails verification rather than falling back to headers", () => {
-    const guard = new PrincipalGuard();
+  it("rejects a bearer token that fails verification rather than falling back to headers", async () => {
+    const guard = new PrincipalGuard(fakeDatabase(false));
     const context = contextWithHeaders({ "x-greecon-session": "not-a-real-token", "x-user-role": "owner" });
 
-    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
   });
 
-  it("rejects a bearer token when JWT_SECRET is not configured", () => {
+  it("rejects a bearer token when JWT_SECRET is not configured", async () => {
     delete process.env.JWT_SECRET;
     const token = jwt.sign({ sub: "user-1", tenantId: "tenant-1", role: "owner", email: "owner@greecon.earth" }, "some-secret");
-    const guard = new PrincipalGuard();
+    const guard = new PrincipalGuard(fakeDatabase(false));
     const context = contextWithHeaders({ "x-greecon-session": token });
 
-    expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+    await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
   });
 
   describe("production lockout", () => {
@@ -98,20 +109,20 @@ describe("PrincipalGuard", () => {
       process.env.NODE_ENV = "production";
     });
 
-    it("rejects an unauthenticated request outright instead of falling back to the role header", () => {
-      const guard = new PrincipalGuard();
+    it("rejects an unauthenticated request outright instead of falling back to the role header", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-user-role": "owner" });
 
-      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
 
-    it("still verifies a real session token normally", () => {
+    it("still verifies a real session token normally", async () => {
       const claims: JwtClaims = { sub: "user-1", tenantId: "tenant-1", role: "owner", email: "owner@greecon.earth" };
       const token = jwt.sign(claims, "test-secret");
-      const guard = new PrincipalGuard();
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-greecon-session": token });
 
-      expect(guard.canActivate(context)).toBe(true);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
     });
   });
 
@@ -120,41 +131,105 @@ describe("PrincipalGuard", () => {
       process.env.NODE_ENV = "production";
     });
 
-    it("lets an unauthenticated POST /auth/login through in production instead of 401ing before it reaches the controller", () => {
-      const guard = new PrincipalGuard();
+    it("lets an unauthenticated POST /auth/login through in production instead of 401ing before it reaches the controller", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({}, { path: "/auth/login", method: "POST" });
 
-      expect(guard.canActivate(context)).toBe(true);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
     });
 
-    it("lets an unauthenticated GET /health through in production", () => {
-      const guard = new PrincipalGuard();
+    it("lets an unauthenticated GET /health through in production", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({}, { path: "/health", method: "GET" });
 
-      expect(guard.canActivate(context)).toBe(true);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
     });
 
-    it("does not extend the same pass to a lookalike route", () => {
-      const guard = new PrincipalGuard();
+    it("does not extend the same pass to a lookalike route", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({}, { path: "/auth/session", method: "GET" });
 
-      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
   });
 
-  describe("edge device ingest token", () => {
+  describe("per-gateway edge device secret", () => {
+    beforeEach(() => {
+      process.env.NODE_ENV = "production";
+    });
+
+    it("grants a scoped operator principal for the tenant that owns the matching gateway secret", async () => {
+      const db = fakeDatabase(true, [{ tenant_id: "farm-tenant" }]);
+      const guard = new PrincipalGuard(db);
+      const context = contextWithHeaders({ "x-edge-device-token": "a-real-per-gateway-secret" }, { path: "/telemetry/ingest", method: "POST" });
+      const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.principal).toEqual({
+        tenantId: "farm-tenant",
+        userId: "edge-device",
+        role: "operator",
+        email: "edge-device@greecon.earth",
+        isPlatformAdmin: false
+      });
+      // The plaintext secret is hashed before ever reaching the database — never queried in the
+      // clear, mirroring how a password is never compared against a stored value in the clear.
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining("secret_hash"), [expect.not.stringMatching("a-real-per-gateway-secret")]);
+    });
+
+    it("does not extend gateway access to any other route", async () => {
+      const db = fakeDatabase(true, [{ tenant_id: "farm-tenant" }]);
+      const guard = new PrincipalGuard(db);
+      const context = contextWithHeaders({ "x-edge-device-token": "a-real-per-gateway-secret" }, { path: "/sites", method: "GET" });
+
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it("falls through to the legacy shared token when no gateway matches the secret", async () => {
+      process.env.EDGE_INGEST_TOKEN = "shared-secret";
+      process.env.EDGE_INGEST_TENANT_ID = "legacy-tenant";
+      const db = fakeDatabase(true, []);
+      const guard = new PrincipalGuard(db);
+      const context = contextWithHeaders({ "x-edge-device-token": "shared-secret" }, { path: "/telemetry/ingest", method: "POST" });
+      const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(request.principal.tenantId).toBe("legacy-tenant");
+    });
+
+    it("never queries the database when it isn't configured, and falls straight to the legacy path", async () => {
+      process.env.EDGE_INGEST_TOKEN = "shared-secret";
+      process.env.EDGE_INGEST_TENANT_ID = "legacy-tenant";
+      const db = fakeDatabase(false);
+      const guard = new PrincipalGuard(db);
+      const context = contextWithHeaders({ "x-edge-device-token": "shared-secret" }, { path: "/telemetry/ingest", method: "POST" });
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it("rejects when neither a gateway secret nor the legacy token match", async () => {
+      const db = fakeDatabase(true, []);
+      const guard = new PrincipalGuard(db);
+      const context = contextWithHeaders({ "x-edge-device-token": "not-registered-anywhere" }, { path: "/telemetry/ingest", method: "POST" });
+
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("legacy shared edge ingest token", () => {
     beforeEach(() => {
       process.env.NODE_ENV = "production";
       process.env.EDGE_INGEST_TOKEN = "shared-secret";
       process.env.EDGE_INGEST_TENANT_ID = "farm-tenant";
     });
 
-    it("grants a scoped operator principal on POST /telemetry/ingest with the right token", () => {
-      const guard = new PrincipalGuard();
+    it("grants a scoped operator principal on POST /telemetry/ingest with the right token", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-edge-device-token": "shared-secret" }, { path: "/telemetry/ingest", method: "POST" });
       const request = context.switchToHttp().getRequest<RequestWithPrincipal>();
 
-      expect(guard.canActivate(context)).toBe(true);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
       expect(request.principal).toEqual({
         tenantId: "farm-tenant",
         userId: "edge-device",
@@ -164,26 +239,26 @@ describe("PrincipalGuard", () => {
       });
     });
 
-    it("rejects the right token on any other route", () => {
-      const guard = new PrincipalGuard();
+    it("rejects the right token on any other route", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-edge-device-token": "shared-secret" }, { path: "/sites", method: "GET" });
 
-      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
 
-    it("rejects a wrong token on the ingest route", () => {
-      const guard = new PrincipalGuard();
+    it("rejects a wrong token on the ingest route", async () => {
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-edge-device-token": "wrong" }, { path: "/telemetry/ingest", method: "POST" });
 
-      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
 
-    it("never grants access when EDGE_INGEST_TOKEN isn't configured, even with a token header present", () => {
+    it("never grants access when EDGE_INGEST_TOKEN isn't configured, even with a token header present", async () => {
       delete process.env.EDGE_INGEST_TOKEN;
-      const guard = new PrincipalGuard();
+      const guard = new PrincipalGuard(fakeDatabase(false));
       const context = contextWithHeaders({ "x-edge-device-token": "shared-secret" }, { path: "/telemetry/ingest", method: "POST" });
 
-      expect(() => guard.canActivate(context)).toThrow(UnauthorizedException);
+      await expect(guard.canActivate(context)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

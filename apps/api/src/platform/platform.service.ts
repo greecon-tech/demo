@@ -12,6 +12,7 @@ import {
   DEMO_TENANT_ID,
   DerivedState,
   Device,
+  EdgeGateway,
   EdgeSyncMessage,
   Point,
   RuleAction,
@@ -37,6 +38,7 @@ import {
   type StateSnapshot
 } from "@greecon/gaia-core";
 import { Principal } from "../common/principal";
+import { generateGatewaySecret, hashGatewaySecret } from "../common/gateway-secret";
 import { DatabaseService } from "../database/database.service";
 
 export interface CreateRuleInput {
@@ -105,6 +107,11 @@ export interface CreateDeviceInput {
   positionX?: number;
   positionY?: number;
   placementNote?: string;
+}
+
+export interface CreateGatewayInput {
+  siteId: string;
+  name: string;
 }
 
 export type UpdateDeviceInput = Partial<Omit<CreateDeviceInput, "siteId">> & { health?: Device["health"] };
@@ -279,6 +286,14 @@ export class PlatformService implements OnModuleInit {
 
     const pointRows = await this.db.query<PointRow>("SELECT * FROM points ORDER BY created_at ASC");
     if (pointRows.rows.length > 0) this.points = pointRows.rows.map((row) => mapPointRow(row));
+
+    // secret_hash is deliberately excluded from this SELECT — it never needs to exist in memory
+    // beyond the moment it's written at creation, and PrincipalGuard queries it directly from
+    // Postgres per request rather than through this in-memory list.
+    const gatewayRows = await this.db.query<EdgeGatewayRow>(
+      "SELECT id, tenant_id, site_id, name, status, last_seen_utc, software_version, secure_identity_status FROM edge_gateways ORDER BY created_at ASC"
+    );
+    if (gatewayRows.rows.length > 0) this.gateways = gatewayRows.rows.map((row) => mapGatewayRow(row));
 
     const rows = await this.db.query<RuleRow>("SELECT * FROM rules ORDER BY created_at ASC");
     if (rows.rows.length > 0) this.rules = rows.rows.map((row) => mapRuleRow(row));
@@ -526,6 +541,11 @@ export class PlatformService implements OnModuleInit {
       placementNote: "Utility interconnection point, site entrance"
     }
   ];
+
+  // Empty by default — unlike sites/devices/points, no demo gateway was ever seeded (the demo
+  // tenant's devices reference opaque gatewayId strings with no backing row at all, purely for
+  // display grouping). A real gateway only ever comes from createGateway() below.
+  private gateways: EdgeGateway[] = [];
 
   private points: Point[] = [
     { id: "55555555-5555-4555-8555-555555555501", tenantId: DEMO_TENANT_ID, siteId: "22222222-2222-4222-8222-222222222201", assetId: "33333333-3333-4333-8333-333333333301", deviceId: "44444444-4444-4444-8444-444444444401", canonicalName: "energy.solar.power.kw", label: "Solar production", unit: "kW", quality: "OK", capability: "read", thresholdConfig: { watch_low: 2 } },
@@ -937,6 +957,7 @@ export class PlatformService implements OnModuleInit {
       assets: this.assets.filter((asset) => asset.tenantId === principal.tenantId && asset.siteId === siteId),
       devices: this.devices.filter((device) => device.tenantId === principal.tenantId && device.siteId === siteId),
       points: this.points.filter((point) => point.tenantId === principal.tenantId && point.siteId === siteId),
+      gateways: this.gateways.filter((gateway) => gateway.tenantId === principal.tenantId && gateway.siteId === siteId),
       latestTelemetry: this.latestTelemetry(principal, siteId),
       derivedStates: this.listDerivedStates(principal, siteId),
       alerts: this.listAlerts(principal, siteId),
@@ -955,6 +976,55 @@ export class PlatformService implements OnModuleInit {
 
   listPoints(principal: Principal, deviceId?: string): Point[] {
     return this.scope(this.points, principal.tenantId).filter((point) => !deviceId || point.deviceId === deviceId);
+  }
+
+  listGateways(principal: Principal, siteId?: string): EdgeGateway[] {
+    return this.scope(this.gateways, principal.tenantId).filter((gateway) => !siteId || gateway.siteId === siteId);
+  }
+
+  // The one credential a real edge box needs to send telemetry — generated here and returned
+  // exactly once, the same one-time-disclosure handling as a new user's temporary password. Only
+  // its SHA-256 hash is ever persisted (see gateway-secret.ts for why not bcrypt); losing the
+  // plaintext after this call means generating a new one, the same as losing a password.
+  async createGateway(input: CreateGatewayInput, principal: Principal): Promise<{ gateway: EdgeGateway; secret: string }> {
+    if (!hasPermission(principal.role, "device:manage")) {
+      throw new ForbiddenException("Action blocked by access policy.");
+    }
+    this.requireSite(input.siteId, principal.tenantId);
+
+    const secret = generateGatewaySecret();
+    const secretHash = hashGatewaySecret(secret);
+
+    const gateway: EdgeGateway = {
+      id: randomUUID(),
+      tenantId: principal.tenantId,
+      siteId: input.siteId,
+      name: input.name,
+      status: "OK",
+      secureIdentityStatus: "provisioned"
+    };
+
+    if (this.db.isConfigured()) {
+      await this.db.query(
+        `INSERT INTO edge_gateways (id, tenant_id, site_id, name, status, secure_identity_status, secret_hash)
+         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+        [gateway.id, gateway.tenantId, gateway.siteId, gateway.name, gateway.status, gateway.secureIdentityStatus, secretHash]
+      );
+    }
+
+    this.gateways.push(gateway);
+    await this.recordAudit({
+      tenantId: principal.tenantId,
+      userId: principal.userId,
+      eventType: "gateway.created",
+      siteId: gateway.siteId,
+      entityType: "gateway",
+      entityId: gateway.id,
+      afterMetadata: { name: gateway.name },
+      reason: `Gateway "${gateway.name}" created.`
+    });
+
+    return { gateway, secret };
   }
 
   async createSite(input: CreateSiteInput, principal: Principal): Promise<Site> {
@@ -2495,6 +2565,30 @@ function mapDeviceRow(row: DeviceRow): Device {
     positionX: row.metadata?.positionX,
     positionY: row.metadata?.positionY,
     placementNote: row.metadata?.placementNote
+  };
+}
+
+interface EdgeGatewayRow {
+  id: string;
+  tenant_id: string;
+  site_id: string;
+  name: string;
+  status: string;
+  last_seen_utc: string | null;
+  software_version: string | null;
+  secure_identity_status: string;
+}
+
+function mapGatewayRow(row: EdgeGatewayRow): EdgeGateway {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    siteId: row.site_id,
+    name: row.name,
+    status: row.status as EdgeGateway["status"],
+    lastSeenUtc: row.last_seen_utc ?? undefined,
+    softwareVersion: row.software_version ?? undefined,
+    secureIdentityStatus: row.secure_identity_status as EdgeGateway["secureIdentityStatus"]
   };
 }
 
