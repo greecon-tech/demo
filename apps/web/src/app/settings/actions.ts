@@ -9,7 +9,7 @@ import { apiGet, apiMutate } from "../../lib/api";
  * control, and falls back to "everyone visible, medium, catalog order" the first time anyone
  * customizes anything at all. */
 export async function loadWidgetPreferences(): Promise<DashboardWidgetPreference[]> {
-  const saved = (await apiGet<DashboardWidgetPreference[] | null>("/dashboard-preferences")) ?? [];
+  const saved = await apiGet<DashboardWidgetPreference[]>("/dashboard-preferences");
   const seen = new Set(saved.map((widget) => widget.key));
   const missing: DashboardWidgetPreference[] = dashboardWidgetCatalog.filter((key) => !seen.has(key)).map((key) => ({ key, visible: true, size: "medium" }));
   return [...saved, ...missing];

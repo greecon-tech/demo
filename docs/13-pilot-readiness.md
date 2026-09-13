@@ -480,6 +480,19 @@ real natural key, `(tenant_id, email)` — the constraint that was actually firi
 guarding against a re-used `id`. Converges to the same end state regardless of exactly how much of
 a previous attempt already applied.
 
+**Third bug, found live once the site was actually reachable again:** every single user hitting
+the Overview page saw a raw server error. `GET /dashboard-preferences` (added in this same pass)
+returned `null` for "never customized yet" — true for literally everyone right after this feature
+shipped — and NestJS's Express adapter treats a `null`/`undefined` controller return value as "send
+no body at all," not the JSON literal `null`. The client's `response.json()` then choked on a
+genuinely empty body with an opaque `Unexpected end of JSON input`, with nothing in any log naming
+which request caused it. Fixed two ways: `getDashboardPreferences` now returns `[]` instead of
+`null` (an empty list already meant the same thing to `applyDashboardPreferences`, so this cost
+nothing), and — the more durable fix — `apiGet`/`apiMutate`/the login action now read the response
+body as text first and report the request, status, and a snippet of the raw body on a parse
+failure, instead of a bare crash. That second part is what actually let this get diagnosed from a
+screenshot instead of guessing blind against a live production server with no direct access to it.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site

@@ -153,8 +153,8 @@ describe("PlatformService", () => {
   });
 
   describe("dashboard preferences", () => {
-    it("returns null (no database configured) and still lets a save round-trip return what was passed in", async () => {
-      expect(await platform.getDashboardPreferences(OWNER)).toBeNull();
+    it("returns an empty list (no database configured) and still lets a save round-trip return what was passed in", async () => {
+      expect(await platform.getDashboardPreferences(OWNER)).toEqual([]);
 
       const widgets = [{ key: "Solar production", visible: true, size: "large" as const }];
       const saved = await platform.saveDashboardPreferences(widgets, OWNER);

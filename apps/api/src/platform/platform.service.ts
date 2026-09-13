@@ -647,19 +647,22 @@ export class PlatformService implements OnModuleInit {
     };
   }
 
-  // null (not []) distinguishes "never customized, use the built-in default order" from "chose to
-  // hide everything" — the web app only overrides its own default widget list when this returns
-  // an actual array. No database configured (local dev, static export) means no persisted
-  // preference exists to read, same reasoning as everywhere else this pattern appears.
-  async getDashboardPreferences(principal: Principal): Promise<DashboardWidgetPreference[] | null> {
-    if (!this.db.isConfigured()) return null;
+  // An empty array means "never customized, use the built-in default order" — the web app's
+  // applyDashboardPreferences treats an empty list the same as nothing saved. Deliberately never
+  // returns a bare `null`: NestJS's Express adapter treats a null/undefined controller return
+  // value as "send no body at all" (an empty response), which crashed the client's JSON parser —
+  // exactly the failure this method's very first version caused for literally every user, since
+  // nobody has a saved preference yet. No database configured (local dev, static export) means no
+  // persisted preference exists to read, same reasoning as everywhere else this pattern appears.
+  async getDashboardPreferences(principal: Principal): Promise<DashboardWidgetPreference[]> {
+    if (!this.db.isConfigured()) return [];
 
     const result = await this.db.query<{ widgets: DashboardWidgetPreference[] }>(
       `SELECT widgets FROM dashboard_preferences WHERE user_id = $1 AND tenant_id = $2`,
       [principal.userId, principal.tenantId]
     );
 
-    return result.rows[0]?.widgets ?? null;
+    return result.rows[0]?.widgets ?? [];
   }
 
   async saveDashboardPreferences(widgets: DashboardWidgetPreference[], principal: Principal): Promise<DashboardWidgetPreference[]> {

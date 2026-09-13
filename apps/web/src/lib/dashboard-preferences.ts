@@ -8,8 +8,8 @@ import { Metric } from "./types";
  * preference entry) keeps its default position, appended after every customized one, and stays
  * visible at the default "medium" size — customizing is opt-in, not required to see the default
  * dashboard. */
-export function applyDashboardPreferences(metrics: Metric[], preferences: DashboardWidgetPreference[] | null): Metric[] {
-  if (!preferences || preferences.length === 0) return metrics;
+export function applyDashboardPreferences(metrics: Metric[], preferences: DashboardWidgetPreference[]): Metric[] {
+  if (preferences.length === 0) return metrics;
 
   const byLabel = new Map(metrics.map((metric) => [metric.label, metric]));
   const ordered: Metric[] = [];
