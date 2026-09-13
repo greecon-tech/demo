@@ -5,7 +5,9 @@ import { Section } from "../../../components/Section";
 import { SensorMap } from "../../../components/SensorMap";
 import { Shell } from "../../../components/Shell";
 import { StatusBadge } from "../../../components/StatusBadge";
+import { TimeSeriesChart } from "../../../components/TimeSeriesChart";
 import { apiGet, DEMO_ROLE } from "../../../lib/api";
+import { groupByCanonicalName } from "../../../lib/telemetry-history";
 import { Metric } from "../../../lib/types";
 
 interface SiteDetail {
@@ -18,6 +20,14 @@ interface SiteDetail {
   alerts: Array<{ id: string; severity: string; title: string; status: string }>;
 }
 
+interface TelemetryReading {
+  timestampUtc: string;
+  canonicalName: string;
+  value: number | boolean | string;
+}
+
+const TRENDS_HOURS = 24 * 7;
+
 // Static-export twin of page.tsx (see apps/web/scripts/build-static.sh). Only this build needs
 // every site pre-rendered up front, since a static export has no live API to query at request
 // time; the real SSR page renders on request and deliberately has no generateStaticParams (see
@@ -29,11 +39,16 @@ export async function generateStaticParams() {
 
 export default async function SiteDetailPage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params;
-  const detail = await apiGet<SiteDetail>(`/sites/${siteId}`);
+  const [detail, history] = await Promise.all([
+    apiGet<SiteDetail>(`/sites/${siteId}`),
+    apiGet<TelemetryReading[]>(`/telemetry/history?siteId=${siteId}&hours=${TRENDS_HOURS}`)
+  ]);
   const { site } = detail;
   const metrics = buildMetrics(detail);
   const canControl = hasPermission(DEMO_ROLE, "command:create");
   const hasControllableEquipment = detail.points.some((point) => point.capability === "write" || point.capability === "read_write");
+  const historyByCanonicalName = groupByCanonicalName(history);
+  const trendPoints = Array.from(new Map(detail.points.filter((point) => point.capability !== "write").map((point) => [point.canonicalName, point])).values());
 
   return (
     <Shell title={site.name} subtitle={`${site.type} · ${site.locationName}`}>
@@ -44,6 +59,17 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ sit
       </div>
       <Section title="Summary" aside={<StatusBadge status={site.status} />}>
         <MetricGrid metrics={metrics} />
+      </Section>
+      <Section title="Trends">
+        {trendPoints.length === 0 ? (
+          <div className="empty-state">No trackable points configured for this site yet.</div>
+        ) : (
+          <div className="chart-grid">
+            {trendPoints.map((point) => (
+              <TimeSeriesChart key={point.id} title={point.label} unit={point.unit} data={historyByCanonicalName.get(point.canonicalName) ?? []} />
+            ))}
+          </div>
+        )}
       </Section>
       <Section title="Equipment">
         <SensorMap devices={detail.devices} points={detail.points} readings={detail.latestTelemetry} />

@@ -493,6 +493,42 @@ body as text first and report the request, status, and a snippet of the raw body
 failure, instead of a bare crash. That second part is what actually let this get diagnosed from a
 screenshot instead of guessing blind against a live production server with no direct access to it.
 
+### The first chart pass was readable but bare — no axis values, no per-site detail
+
+**Gap:** the very first version of `TimeSeriesChart` was a plain line with no y-axis, no gridlines,
+and no way to read an exact value or timestamp off it — it showed the *shape* of a trend but not
+"how much." It also only ever existed on the tenant-wide `/analytics` page; a single site's own
+page had no trend charts at all, only the latest instantaneous reading per point (`MetricGrid`),
+same limitation the whole "no history anywhere" gap above was about.
+
+**Fix, following the platform's dataviz method (form → color → validated palette → marks →
+interaction → accessibility, applied to a single-series line card, one hue, no legend needed):**
+- A recessive hairline grid with "nice number" tick labels (0 / 25 / 50 / 75, never raw decimals)
+  on the y-axis — the values a reader actually needs are on the chart now, not just in the header.
+- A 10%-opacity area wash under the line, a marker at the line's end (the mark spec's "value at
+  the line's end," reinforcing the header's latest-value figure), and start/end date labels on the
+  x-axis.
+- A real hover layer: a crosshair that snaps to the nearest point and a tooltip showing its exact
+  value and timestamp — every chart is interactive now, not just a static image, per the method's
+  "the hover layer is part of the deliverable, not an upgrade."
+- Every site's own page (`/sites/:siteId`) now has its own **Trends** section: one chart per
+  readable point that site actually has (derived from its own provisioned points, not a fixed
+  catalog), so a single-site operator sees their own history without going through the tenant-wide
+  Analytics page at all — with a link across to full Analytics, filtered to that site, for more.
+- `groupByCanonicalName` (turning a `/telemetry/history` response into per-metric chart series)
+  was duplicated three times (Analytics, its static twin, and now the site page) — pulled into
+  `lib/telemetry-history.ts` once.
+
+**Verified:** rendered the chart with sample data through a headless browser and inspected the
+screenshot directly (axis values, gridlines, area fill, and end-marker all present and legible)
+rather than trusting the code alone, plus full `tsc`/`next build` passes for SSR and the static
+export.
+
+**How to extend further:** the site page's Trends section is a fixed 7-day window with no range
+tabs (unlike the tenant-wide Analytics page) — a reasonable v1 given a single-site operator mostly
+wants "how's this been lately," but the same range-tab pattern from Analytics would extend cleanly
+if that's ever needed there too.
+
 ## Still open
 
 ### The cloud API isn't reachable from a remote edge site
