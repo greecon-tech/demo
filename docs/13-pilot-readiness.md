@@ -606,6 +606,33 @@ status page, a webhook receiver) needs the same explicit allowlist entry in `Pri
 is deliberately not a broad "skip auth for GET requests" rule, since that would be exactly the kind
 of accidental exposure the production lockout exists to prevent.
 
+### Greecon staff had to click through the client dashboard to reach admin tools
+
+**Gap:** `/login` was one plain form for every account. A Greecon platform admin (like Eridon) and
+an ordinary client account both landed on the same tenant Overview page after signing in — a
+platform admin then had to navigate to the "Clients" link in the sidebar every time they actually
+wanted to onboard a client or check on one, rather than landing there directly.
+
+**Fix:** the login page now shows two buttons, **"Client login"** and **"Greecon team"** —
+`LoginForm.tsx` sends the same email/password either way (there is no separate credential system;
+`isPlatformAdmin` is still the one real flag that means anything), but which button was clicked
+decides where a successful login lands: `/` for a client, `/platform` for the team option. Picking
+"Greecon team" with an account that isn't actually a platform admin is rejected outright
+(`loginAction` in `apps/web/src/app/login/actions.ts`) with a message pointing back to the other
+button, rather than silently logging them into the client view. This is a landing-page convenience
+only — it changes nothing about what either account can actually do; the "Admin" and "Clients" nav
+links (`Nav.tsx`) are gated by `user:manage`/`isPlatformAdmin` exactly as before, for either path.
+
+**Verified:** full `tsc`/`next build` passes, plus a rendered screenshot of both toggle states
+confirming the selected option is visually distinct and the unselected one fades to the ghost
+button style.
+
+**How to extend further:** a platform admin still can't manage a *different* client's own users
+from inside their own account — `/admin` only ever operates on the caller's own tenant. Doing that
+for real (rather than asking a client to make the change themselves) needs a deliberate
+"impersonate/act as this client" flow, which is a bigger, more sensitive feature than this pass —
+worth building once there's a second real client whose admin actually needs Greecon's help this way.
+
 ## Still open
 
 ### Manual command targets are not filtered by role/site scope beyond permission
