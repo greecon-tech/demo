@@ -17,7 +17,18 @@ export async function loginAction(email: string, password: string): Promise<{ er
     return { error: "Invalid email or password." };
   }
 
-  const { token, user } = (await response.json()) as { token: string; user: SessionUser };
+  // Parsed defensively rather than a bare response.json() — an unreadable body here previously
+  // surfaced as an opaque "Unexpected end of JSON input" crash with no indication of what the API
+  // actually sent back, which made a real misconfiguration (e.g. the API returning an empty body)
+  // impossible to diagnose from the browser alone.
+  const raw = await response.text();
+  let parsed: { token: string; user: SessionUser };
+  try {
+    parsed = JSON.parse(raw) as { token: string; user: SessionUser };
+  } catch {
+    return { error: `The server sent back something unreadable (status ${response.status}). Raw response: ${raw.slice(0, 300) || "(empty)"}` };
+  }
+  const { token, user } = parsed;
   const store = await cookies();
   // Matches the API's own 12h token expiry (apps/api/src/modules/auth/auth.service.ts) — the
   // cookie should never outlive the token it holds.
