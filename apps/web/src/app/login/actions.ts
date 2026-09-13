@@ -6,7 +6,7 @@ import { SESSION_TOKEN_COOKIE, SESSION_USER_COOKIE, SessionUser } from "../../li
 
 const API_BASE_URL = process.env.GREECON_API_URL ?? "http://localhost:4000";
 
-export async function loginAction(email: string, password: string): Promise<{ error?: string }> {
+export async function loginAction(email: string, password: string, intendedArea: "client" | "staff" = "client"): Promise<{ error?: string }> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -29,6 +29,14 @@ export async function loginAction(email: string, password: string): Promise<{ er
     return { error: `The server sent back something unreadable (status ${response.status}). Raw response: ${raw.slice(0, 300) || "(empty)"}` };
   }
   const { token, user } = parsed;
+
+  // The credentials are real either way — this only decides which door they walked through. A
+  // client account trying the "Greecon team" button is turned back here rather than silently
+  // landing on the client dashboard, so the two options actually mean something.
+  if (intendedArea === "staff" && !user.isPlatformAdmin) {
+    return { error: "This account doesn't have Greecon team access. Use \"Client login\" instead." };
+  }
+
   const store = await cookies();
   // Matches the API's own 12h token expiry (apps/api/src/modules/auth/auth.service.ts) — the
   // cookie should never outlive the token it holds.
@@ -42,7 +50,7 @@ export async function loginAction(email: string, password: string): Promise<{ er
   store.set(SESSION_TOKEN_COOKIE, token, cookieOptions);
   store.set(SESSION_USER_COOKIE, JSON.stringify(user), cookieOptions);
 
-  redirect("/");
+  redirect(intendedArea === "staff" ? "/platform" : "/");
 }
 
 export async function logoutAction(): Promise<void> {
